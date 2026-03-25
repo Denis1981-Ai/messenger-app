@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions",
+  "remote": {
+    "urls": [
+      "https://chat.svarka-weld.ru/*",
+      "http://127.0.0.1:1420/*"
+    ]
+  },
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-is-minimized",
+    "core:window:allow-request-user-attention",
+    "core:window:allow-set-overlay-icon",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
+    "core:window:allow-unminimize",
+    "notification:default"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "lint": "eslint",
+    "prisma:generate": "prisma generate && node scripts/fix-prisma-client.js",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "prisma db seed",
+    "user:list": "node scripts/user-admin.js list",
+    "user:create": "node scripts/user-admin.js create",
+    "user:reset-password": "node scripts/user-admin.js reset-password",
+    "user:disable": "node scripts/user-admin.js disable",
+    "ops:backup": "node scripts/db-backup.js",
+    "ops:restore": "node scripts/db-restore.js",
+    "ops:smoke": "node scripts/smoke-check.js"
+  },
+  "dependencies": {
+    "@prisma/client": "6.16.2",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-notification": "^2.3.3",
+    "next": "16.1.7",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.10.1",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.7",
+    "prisma": "6.16.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}

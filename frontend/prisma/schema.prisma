@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ChatType {
+  DIRECT
+  GROUP
+}
+
+model User {
+  id                String       @id @default(cuid())
+  name              String
+  displayName       String?      @map("display_name")
+  login             String       @unique
+  passwordHash      String       @map("password_hash")
+  isActive          Boolean      @default(true) @map("is_active")
+  lastSeenAt        DateTime?    @map("last_seen_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  createdChats      Chat[]       @relation("CreatedChats")
+  chatMembers       ChatMember[]
+  messages          Message[]
+  sessions          Session[]
+  uploadedFiles     Attachment[] @relation("UploadedFiles")
+
+  @@map("users")
+}
+
+model Chat {
+  id              String       @id @default(cuid())
+  title           String?
+  chatType        ChatType     @default(DIRECT) @map("chat_type")
+  directKey       String?      @unique @map("direct_key")
+  createdByUserId String       @map("created_by_user_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  createdBy       User         @relation("CreatedChats", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  members         ChatMember[]
+  messages        Message[]
+
+  @@index([createdAt])
+  @@index([createdByUserId])
+  @@map("chats")
+}
+
+model ChatMember {
+  chatId   String   @map("chat_id")
+  userId   String   @map("user_id")
+  joinedAt DateTime @default(now()) @map("joined_at")
+  lastReadAt DateTime? @map("last_read_at")
+  chat     Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([chatId, userId])
+  @@index([userId])
+  @@map("chat_members")
+}
+
+model Message {
+  id               String       @id @default(cuid())
+  chatId           String       @map("chat_id")
+  authorId         String       @map("author_id")
+  text             String       @db.Text
+  createdAt        DateTime     @default(now()) @map("created_at")
+  editedAt         DateTime?    @map("edited_at")
+  replyToMessageId String?      @map("reply_to_message_id")
+  chat             Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  author           User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  replyToMessage   Message?     @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          Message[]    @relation("MessageReplies")
+  attachments      Attachment[]
+
+  @@index([chatId, createdAt])
+  @@index([authorId])
+  @@index([replyToMessageId])
+  @@map("messages")
+}
+
+model Attachment {
+  id               String   @id @default(cuid())
+  messageId        String   @map("message_id")
+  uploadedByUserId String   @map("uploaded_by_user_id")
+  originalName     String   @map("original_name")
+  mimeType         String   @map("mime_type")
+  sizeBytes        Int      @map("size_bytes")
+  storageKey       String   @map("storage_key")
+  createdAt        DateTime @default(now()) @map("created_at")
+  message          Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  uploadedBy       User     @relation("UploadedFiles", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([messageId])
+  @@index([uploadedByUserId])
+  @@map("attachments")
+}
+
+model Session {
+  id        String   @id
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
