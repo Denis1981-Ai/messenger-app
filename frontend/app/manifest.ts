@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Svarka Weld Messenger",
-    short_name: "Messenger",
+    short_name: "ВэлдСпарк",
     description: "Internal corporate messenger for Svarka Weld employees",
     start_url: "/",
     scope: "/",

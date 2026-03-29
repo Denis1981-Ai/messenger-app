@@ -24,8 +24,11 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "Messenger",
+    statusBarStyle: "black-translucent",
+    title: "ВэлдСпарк",
+  },
+  icons: {
+    apple: "/icons/apple-touch-icon.png",
   },
 };
 
