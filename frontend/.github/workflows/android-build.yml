@@ -1,0 +1,87 @@
+name: Android Build
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager "ndk;26.1.10909125"
+          sdkmanager "build-tools;35.0.0"
+          sdkmanager "platforms;android-36"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Init Tauri Android
+        run: npm run tauri -- android init
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+
+      - name: Write keystore file
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > src-tauri/gen/android/svarkaweld.keystore
+
+      - name: Write keystore.properties
+        run: |
+          cat > src-tauri/gen/android/keystore.properties << EOF
+          storeFile=svarkaweld.keystore
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Build Android APK
+        run: npm run tauri -- android build --target aarch64
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: svarkaweld-android-${{ github.sha }}
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+          retention-days: 30
+
+      # iOS — раскомментировать после покупки Apple Developer аккаунта ($99/год)
+      # build-ios:
+      #   runs-on: macos-latest
+      #   steps:
+      #     - uses: actions/checkout@v4
+      #     - name: Build iOS
+      #       run: npm run tauri -- ios build
