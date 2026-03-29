@@ -10,7 +10,8 @@ export function ChatListHeader({ onOpenCreateConversation }: Props) {
           Чаты
         </div>
         <h1 className="text-[18px] font-semibold tracking-[-0.04em] text-[var(--text-primary)] md:mt-2 md:text-[22px]">
-          Рабочие диалоги
+          <span className="md:hidden">Диалоги</span>
+          <span className="hidden md:inline">Рабочие диалоги</span>
         </h1>
         <p className="mt-1.5 hidden max-w-[180px] text-[12px] leading-5 text-[var(--text-secondary)] md:block">
           Приватные беседы и общение команды в одном окне.
