@@ -1,6 +1,6 @@
 [package]
 name = "svarka_weld_messenger_desktop"
-version = "0.1.0"
+version = "0.1.2"
 description = "Windows desktop shell for the internal Svarka Weld messenger"
 authors = ["Svarka Weld"]
 license = ""
@@ -22,5 +22,8 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.10.3", features = [] }
+tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"

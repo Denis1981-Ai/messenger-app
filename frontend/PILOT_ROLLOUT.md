@@ -57,7 +57,7 @@ Run after public updates that can affect app shell or browser installability:
 ## Windows desktop bootstrap manual QA
 Run when validating the Tauri desktop shell:
 1. Build the installer by `npm run desktop:build`
-2. Install `src-tauri/target/release/bundle/nsis/Svarka Weld Messenger_0.1.0_x64-setup.exe`
+2. Install `src-tauri/target/release/bundle/nsis/Svarka Weld Messenger_0.1.2_x64-setup.exe`
 3. Launch the installed desktop app
 4. Verify login works
 5. Verify chat list opens
@@ -67,6 +67,20 @@ Run when validating the Tauri desktop shell:
 9. Verify file upload and file download work
 10. Verify logout and login again work
 11. Verify the live web runtime still works in the browser after desktop testing
+
+## Windows desktop self-update manual QA
+Run only on the updater-enabled transition build and later:
+1. Confirm the currently installed old legacy desktop build does not contain updater bootstrap
+2. Install the transition build manually once
+3. Publish a newer signed desktop version and update `public/desktop-updates/windows-x86_64/latest.json`
+4. Launch the already installed transition build
+5. Verify the app checks for update on startup without disturbing the user when no update exists
+6. Verify the app shows a narrow prompt when a newer version exists
+7. Click `Обновить сейчас`
+8. Verify downloading/install state is shown honestly
+9. Verify Windows closes the app if required for installer handoff
+10. Verify the new desktop version opens after installation
+11. Verify login, chats, files and notifications still work on the updated version
 
 ## Windows desktop notifications manual QA
 Run only inside the installed Tauri desktop app:

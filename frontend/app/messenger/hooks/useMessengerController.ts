@@ -24,11 +24,12 @@ import { PRESENCE_HEARTBEAT_INTERVAL_MS } from "@/lib/presence";
 import { getDesktopNotificationsBridge } from "../utils/desktopNotifications";
 import { playIncomingMessageSound, prepareIncomingMessageSound } from "../utils/incomingMessageSound";
 import { formatMessageDate, formatMessageTime } from "../utils/format";
+import { triggerAttachmentDownload } from "../utils/attachmentDownload";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_FILES_PER_MESSAGE = 5;
 const NOT_AVAILABLE_MESSAGE = "Недоступно в text pilot.";
-const ACTIVE_CHAT_POLL_INTERVAL_MS = 4 * 1000;
+const ACTIVE_CHAT_POLL_INTERVAL_MS = 30 * 1000; // fallback when SSE is unavailable
 const CHAT_LIST_POLL_INTERVAL_MS = 8 * 1000;
 const APP_TITLE = "Svarka Weld Messenger";
 const UNREAD_ATTENTION_DEBUG_KEY = "messenger:debug-unread-attention";
@@ -129,7 +130,7 @@ const focusComposerInput = (
 
 const attachmentLabel = (fileType?: string, count = 1) => {
   if (count > 1) {
-    return `?? Файлы (${count})`;
+    return `📎 Файлы (${count})`;
   }
 
   return fileType?.startsWith("image/") ? "\u{1F5BC} \u0418\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435" : "\u{1F4CE} \u0424\u0430\u0439\u043b";
@@ -348,9 +349,13 @@ export const useMessengerController = () => {
   const desktopNotificationSessionReadyRef = useRef(false);
   const desktopNotificationCleanupRef = useRef<(() => Promise<void>) | null>(null);
   const currentChatRef = useRef("");
+  const triggerActiveChatRefreshRef = useRef<(() => void) | null>(null);
   const currentUserIdRef = useRef("");
 
   const currentUserId = currentUser?.id || "";
+  const canDeleteAnyMessages =
+    (currentUser?.login || "").toLowerCase() === "weld.info@yandex.ru" ||
+    (currentUser?.displayName || "").toLowerCase() === "weld.info@yandex.ru";
   const users = useMemo(() => (currentUser ? [currentUser, ...availableUsers] : availableUsers), [availableUsers, currentUser]);
 
   const visibleChatSummaries = useMemo(() => {
@@ -993,11 +998,16 @@ export const useMessengerController = () => {
       }
     };
 
+    triggerActiveChatRefreshRef.current = () => {
+      void pollActiveChat();
+    };
+
     const intervalId = window.setInterval(() => {
       void pollActiveChat();
     }, ACTIVE_CHAT_POLL_INTERVAL_MS);
 
     return () => {
+      triggerActiveChatRefreshRef.current = null;
       window.clearInterval(intervalId);
     };
   }, [
@@ -1010,6 +1020,25 @@ export const useMessengerController = () => {
     refreshDirectoryState,
     refreshMessages,
   ]);
+
+  // SSE: real-time push for active chat (replaces 4s polling; 30s polling above is the fallback)
+  useEffect(() => {
+    if (!isAuthenticated || !currentChat || currentChatSummary?.isVirtual) {
+      return;
+    }
+
+    const since = new Date().toISOString();
+    const url = `/api/sse?chatId=${encodeURIComponent(currentChat)}&since=${encodeURIComponent(since)}`;
+    const eventSource = new EventSource(url);
+
+    eventSource.addEventListener("messages", () => {
+      triggerActiveChatRefreshRef.current?.();
+    });
+
+    return () => {
+      eventSource.close();
+    };
+  }, [currentChat, currentChatSummary?.isVirtual, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -1422,7 +1451,33 @@ export const useMessengerController = () => {
     }
 
     if (editingMessageId) {
-      setFeedback(NOT_AVAILABLE_MESSAGE);
+      if (!text) {
+        return;
+      }
+
+      try {
+        const response = await fetchJson<{ message: ServerMessage }>(
+          `/api/chats/${currentChat}/messages/${editingMessageId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              text,
+            }),
+          }
+        );
+
+        setMessagesByChat((prev) => ({
+          ...prev,
+          [currentChat]: (prev[currentChat] || []).map((message) =>
+            message.id === editingMessageId ? toClientMessage(response.message, currentUserId) : message
+          ),
+        }));
+
+        await refreshDirectoryState().catch(() => {});
+        resetComposer();
+      } catch (error) {
+        showWarning(error instanceof Error ? error.message : "Не удалось изменить сообщение.");
+      }
       return;
     }
 
@@ -1498,13 +1553,14 @@ export const useMessengerController = () => {
     }
   }, [
     currentChat,
+    currentUserId,
     editingMessageId,
     ensureActiveChatId,
     input,
     pendingAttachments,
     replyingToMessageId,
+    refreshDirectoryState,
     resetComposer,
-    setFeedback,
     showWarning,
     syncCreatedMessage,
   ]);
@@ -1517,9 +1573,30 @@ export const useMessengerController = () => {
     setFeedback(NOT_AVAILABLE_MESSAGE);
   }, [setFeedback]);
 
-  const startEditingMessage = useCallback((_messageId: string) => {
-    setFeedback(NOT_AVAILABLE_MESSAGE);
-  }, [setFeedback]);
+  const startEditingMessage = useCallback(
+    (messageId: string) => {
+      const message = currentChatMessages.find((item) => item.id === messageId);
+
+      if (!message || message.authorId !== currentUserId) {
+        return;
+      }
+
+      if (!message.text?.trim()) {
+        setFeedback("Можно редактировать только текст сообщения.");
+        return;
+      }
+
+      setReplyingToMessageId(null);
+      setShowEmojiPicker(false);
+      setPendingAttachments([]);
+      setUploadingAttachments([]);
+      pendingFilesRef.current = {};
+      setEditingMessageId(message.id);
+      setInput(message.text);
+      focusComposerInput(textInputRef, message.text);
+    },
+    [currentChatMessages, currentUserId, setFeedback]
+  );
 
   const startReplyToMessage = useCallback(
     (messageId: string) => {
@@ -1534,6 +1611,7 @@ export const useMessengerController = () => {
     setEditingMessageId(null);
     setReplyingToMessageId(null);
     setShowEmojiPicker(false);
+    setInput("");
   }, []);
 
   const scrollToMessage = useCallback((messageId: string) => {
@@ -1628,6 +1706,24 @@ export const useMessengerController = () => {
   }, [setFeedback]);
 
   const openContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>, messageId: string) => {
+    const selection =
+      typeof window !== "undefined" && typeof window.getSelection === "function" ? window.getSelection() : null;
+    const selectedText = selection?.toString().trim() || "";
+    const currentTarget = event.currentTarget;
+    const anchorNode = selection?.anchorNode || null;
+    const focusNode = selection?.focusNode || null;
+    const hasSelectionInsideMessage =
+      Boolean(selectedText) &&
+      Boolean(anchorNode) &&
+      Boolean(focusNode) &&
+      currentTarget.contains(anchorNode) &&
+      currentTarget.contains(focusNode);
+
+    if (hasSelectionInsideMessage) {
+      setContextMenu(null);
+      return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
 
@@ -1645,19 +1741,16 @@ export const useMessengerController = () => {
   }, []);
 
   const downloadMessageAttachments = useCallback(
-    (messageId: string) => {
+    async (messageId: string) => {
       const message = currentChatMessages.find((item) => item.id === messageId);
       const attachments = message?.attachments || [];
       if (attachments.length === 0) {
         return;
       }
 
-      attachments.forEach((attachment) => {
-        const downloadUrl = attachment.fileData.startsWith("data:")
-          ? attachment.fileData
-          : `${attachment.fileData}${attachment.fileData.includes("?") ? "&" : "?"}download=1`;
-        window.open(downloadUrl, "_blank", "noopener,noreferrer");
-      });
+      for (const attachment of attachments) {
+        await triggerAttachmentDownload(attachment.fileData, attachment.fileName);
+      }
     },
     [currentChatMessages]
   );
@@ -1678,15 +1771,54 @@ export const useMessengerController = () => {
         startReplyToMessage(message.id);
       } else if (action === "copy") {
         await copySingleMessage(message.id);
+      } else if (action === "edit") {
+        startEditingMessage(message.id);
+      } else if (action === "delete") {
+        try {
+          await fetchJson<{ ok: true }>(`/api/chats/${currentChat}/messages/${message.id}`, {
+            method: "DELETE",
+          });
+
+          setMessagesByChat((prev) => ({
+            ...prev,
+            [currentChat]: (prev[currentChat] || []).filter((item) => item.id !== message.id),
+          }));
+
+          if (editingMessageId === message.id) {
+            resetComposer();
+          }
+
+          await Promise.all([
+            refreshDirectoryState().catch(() => {}),
+            refreshMessages(currentChat, currentUserId, { markAsRead: true }).catch(() => {}),
+          ]);
+        } catch (error) {
+          setFeedback(error instanceof Error ? error.message : "Не удалось удалить сообщение.");
+        }
       } else if (action === "download") {
-        downloadMessageAttachments(message.id);
+        await downloadMessageAttachments(message.id);
       } else {
         setFeedback(NOT_AVAILABLE_MESSAGE);
       }
 
       setContextMenu(null);
     },
-    [contextMenu, copySingleMessage, currentChatMessages, downloadMessageAttachments, setFeedback, startReplyToMessage]
+    [
+      contextMenu,
+      copySingleMessage,
+      currentChat,
+      currentChatMessages,
+      currentUserId,
+      downloadMessageAttachments,
+      editingMessageId,
+      refreshDirectoryState,
+      refreshMessages,
+      resetComposer,
+      setFeedback,
+      setMessagesByChat,
+      startEditingMessage,
+      startReplyToMessage,
+    ]
   );
 
   const insertEmoji = useCallback(
@@ -1877,6 +2009,7 @@ export const useMessengerController = () => {
     contextMenuMessage,
     messagesById,
     replyingToMessage,
+    canDeleteAnyMessages,
     fileInputRef,
     textInputRef,
     messagesEndRef,

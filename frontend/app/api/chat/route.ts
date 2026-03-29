@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { unauthorized } from "@/lib/server/response";
+import { getCurrentSessionUser } from "@/lib/server/session";
+
 type ChatHistoryItem = {
   role?: "user" | "assistant" | "system";
   content?: string;
@@ -56,6 +59,11 @@ const getTextFromResponse = (payload: unknown) => {
 };
 
 export async function POST(request: Request) {
+  const sessionUser = await getCurrentSessionUser();
+  if (!sessionUser) {
+    return unauthorized();
+  }
+
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(
       { error: "OPENAI_API_KEY is not configured on the server." },

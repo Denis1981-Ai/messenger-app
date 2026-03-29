@@ -42,3 +42,23 @@ body {
   background: rgba(93, 121, 238, 0.3);
   color: #f8fbff;
 }
+
+.message-text--mine::selection {
+  background: rgba(255, 255, 255, 0.96);
+  color: #182131;
+}
+
+.message-text--mine::-moz-selection {
+  background: rgba(255, 255, 255, 0.96);
+  color: #182131;
+}
+
+.message-text--incoming::selection {
+  background: rgba(120, 145, 255, 0.52);
+  color: #ffffff;
+}
+
+.message-text--incoming::-moz-selection {
+  background: rgba(120, 145, 255, 0.52);
+  color: #ffffff;
+}

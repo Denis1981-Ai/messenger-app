@@ -10,6 +10,15 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
 
 const GENERIC_MIME_TYPES = new Set(["", "application/octet-stream"]);
 const PREVIEWABLE_IMAGE_MIME_TYPES = new Set(Object.values(IMAGE_MIME_BY_EXTENSION));
+const EXECUTABLE_EXTENSIONS = new Set([".exe", ".msi", ".msix", ".appinstaller"]);
+const EXECUTABLE_MIME_TYPES = new Set([
+  "application/x-msdownload",
+  "application/x-msdos-program",
+  "application/vnd.microsoft.portable-executable",
+  "application/x-apple-diskimage",
+  "application/x-msi",
+  "application/msi",
+]);
 
 const getFileExtension = (fileName?: string | null) => {
   if (!fileName) {
@@ -43,3 +52,10 @@ export const resolveAttachmentMimeType = (mimeType?: string | null, fileName?: s
 
 export const isPreviewableImageAttachment = (mimeType?: string | null, fileName?: string | null) =>
   PREVIEWABLE_IMAGE_MIME_TYPES.has(resolveAttachmentMimeType(mimeType, fileName));
+
+export const isExecutableAttachment = (mimeType?: string | null, fileName?: string | null) => {
+  const extension = getFileExtension(fileName);
+  const normalizedMimeType = String(mimeType || "").trim().toLowerCase();
+
+  return EXECUTABLE_EXTENSIONS.has(extension) || EXECUTABLE_MIME_TYPES.has(normalizedMimeType);
+};

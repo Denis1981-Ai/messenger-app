@@ -24,6 +24,7 @@ type Props = {
   onDeleteChat: () => void;
   onOpenSettings: () => void;
   onLogout?: () => void;
+  onBackToList?: () => void;
 };
 
 const presenceLabel = (presence?: User["presence"]) =>
@@ -45,6 +46,7 @@ export function ChatHeader({
   onDeleteChat,
   onOpenSettings,
   onLogout,
+  onBackToList,
 }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -101,10 +103,29 @@ export function ChatHeader({
     "inline-flex h-9 items-center gap-2 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--text-primary)]";
 
   return (
-    <div className="relative z-20 border-b border-[rgba(255,255,255,0.06)] bg-[rgba(28,36,51,0.9)] px-5 py-3 backdrop-blur-md">
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(260px,360px)_auto] items-center gap-4">
+    <div className="relative z-20 border-b border-[rgba(255,255,255,0.06)] bg-[rgba(28,36,51,0.9)] px-3 py-3 backdrop-blur-md md:px-5">
+      <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(0,1fr)_minmax(260px,360px)_auto] md:gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
+            {onBackToList && (
+              <button
+                type="button"
+                onClick={onBackToList}
+                className="mr-1 flex h-8 w-8 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--text-primary)] md:hidden"
+                aria-label="Назад к чатам"
+                title="Назад к чатам"
+              >
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="h-4 w-4">
+                  <path
+                    d="M12.5 5L7.5 10L12.5 15"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            )}
             <h2 className="truncate text-[20px] font-semibold tracking-[-0.035em] text-[var(--text-primary)]">
               {currentChat}
             </h2>
@@ -123,7 +144,7 @@ export function ChatHeader({
           <div className="mt-1 text-[12px] text-[var(--text-secondary)]">{subtitle}</div>
         </div>
 
-        <div ref={searchRef} className="relative w-full">
+        <div ref={searchRef} className="relative w-full md:justify-self-center">
           <label className="group flex h-10 items-center gap-2 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(19,27,40,0.76)] px-3.5 focus-within:border-[rgba(93,121,238,0.34)]">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="h-3.5 w-3.5 text-[var(--text-muted)]">
               <path
@@ -170,7 +191,7 @@ export function ChatHeader({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 md:flex-nowrap md:justify-self-end">
           {copySuccess && (
             <span className="rounded-full bg-white/[0.03] px-2.5 py-1 text-[11px] text-[var(--text-secondary)]">
               {copySuccess}

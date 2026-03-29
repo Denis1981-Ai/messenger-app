@@ -4,6 +4,7 @@ import { KeyboardEvent, useMemo, useState } from "react";
 
 import { ChatHeader } from "./messenger/components/ChatHeader";
 import { ContextMenu } from "./messenger/components/ContextMenu";
+import { DesktopUpdaterPrompt } from "./messenger/components/DesktopUpdaterPrompt";
 import { MessageComposer } from "./messenger/components/MessageComposer";
 import { MessageList } from "./messenger/components/MessageList";
 import { SelectionToolbar } from "./messenger/components/SelectionToolbar";
@@ -38,6 +39,7 @@ const looksForeign = (value: string) => {
 export default function Home() {
   const messenger = useMessengerController();
   const [messageSearch, setMessageSearch] = useState("");
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
 
   const getCommandSource = (sourceOverride?: string) => {
     const safeOverride = sourceOverride?.trim();
@@ -362,10 +364,12 @@ export default function Home() {
 
   return (
     <>
-      <div className="h-screen overflow-hidden bg-[var(--app-bg)] [font-family:Inter,system-ui,sans-serif]">
-        <div className="flex h-full w-full items-stretch justify-center p-3">
-          <div className="flex h-full w-full max-w-[1450px] overflow-hidden rounded-[22px] border border-[rgba(255,255,255,0.07)] bg-[var(--shell-bg)] shadow-[0_22px_52px_rgba(8,14,28,0.18)]">
+      <DesktopUpdaterPrompt />
+      <div className="h-[100dvh] overflow-hidden bg-[var(--app-bg)] [font-family:Inter,system-ui,sans-serif] md:h-screen">
+        <div className="flex h-full w-full items-stretch justify-center p-0 md:p-3">
+          <div className="flex h-full w-full max-w-[1450px] overflow-hidden rounded-none border border-[rgba(255,255,255,0.07)] bg-[var(--shell-bg)] shadow-none md:rounded-[22px] md:shadow-[0_22px_52px_rgba(8,14,28,0.18)]">
             <Sidebar
+              className={isMobileChatOpen ? "hidden md:block" : "block"}
               filteredChats={messenger.filteredChatSummaries}
               currentChat={messenger.currentChat}
               currentUserId={messenger.currentUserId}
@@ -373,12 +377,19 @@ export default function Home() {
               search={messenger.search}
               onSearchChange={messenger.setSearch}
               onOpenCreateConversation={messenger.openCreateConversation}
-              onSelectChat={messenger.setCurrentChat}
+              onSelectChat={(chatId) => {
+                messenger.setCurrentChat(chatId);
+                setIsMobileChatOpen(true);
+              }}
               onDeleteChat={messenger.deleteChat}
               onResetComposer={messenger.cancelEditing}
             />
 
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--content-bg)]">
+            <div
+              className={`min-h-0 min-w-0 flex-1 flex-col bg-[var(--content-bg)] ${
+                isMobileChatOpen ? "flex" : "hidden md:flex"
+              }`}
+            >
               <ChatHeader
                 currentChat={messenger.currentChatTitle || messenger.currentChat}
                 currentUserId={messenger.currentUserId}
@@ -392,6 +403,7 @@ export default function Home() {
                   messenger.scrollToMessage(messageId);
                   setMessageSearch("");
                 }}
+                onBackToList={() => setIsMobileChatOpen(false)}
                 onLogout={messenger.logout}
                 onCopyChat={messenger.copyCurrentChat}
                 onToggleSelectionMode={messenger.toggleSelectionMode}
@@ -481,6 +493,7 @@ export default function Home() {
         contextMenu={messenger.contextMenu}
         contextMenuMessage={messenger.contextMenuMessage}
         currentUserId={messenger.currentUserId}
+        canDeleteAnyMessages={messenger.canDeleteAnyMessages}
         contextMenuRef={messenger.contextMenuRef}
         onAction={messenger.handleContextMenuAction}
       />

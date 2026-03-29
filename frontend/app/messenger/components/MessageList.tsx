@@ -196,7 +196,7 @@ export function MessageList({
 
         saveScrollPosition();
       }}
-      className="relative flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(24,31,44,0.5)_0%,rgba(29,40,60,0)_18%)] px-6 py-4"
+      className="relative flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(24,31,44,0.5)_0%,rgba(29,40,60,0)_18%)] px-3 py-3 md:px-6 md:py-4"
     >
       {currentChatMessages.length === 0 ? (
         <div className="flex h-full items-center justify-center">
@@ -208,7 +208,7 @@ export function MessageList({
           </div>
         </div>
       ) : (
-        <div className="mx-auto flex max-w-[980px] flex-col gap-2.5 pb-8">
+        <div className="mx-auto flex w-full max-w-full flex-col gap-2.5 pb-6 md:max-w-[980px] md:pb-8">
           {currentChatMessages.map((message, index) => {
             const isMine = message.authorId === currentUserId;
             const isSelected = selectedMessageIds.includes(message.id);
@@ -225,7 +225,7 @@ export function MessageList({
             return (
               <div key={message.id}>
                 {shouldShowDateDivider && (
-                  <div className="mb-2.5 flex justify-center">
+                  <div className="mb-2 flex justify-center md:mb-2.5">
                     <div className="rounded-full border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.035)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
                       {currentMessageDate}
                     </div>

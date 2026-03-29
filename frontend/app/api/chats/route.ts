@@ -129,30 +129,20 @@ export async function GET() {
       },
     });
 
-    const unreadCounts = await Promise.all(
-      chats.map(async (chat: ChatListQueryResult) => {
-        const membership = chat.members.find((member) => member.userId === sessionUser.user.id);
-        const count = await prisma.message.count({
-          where: {
-            chatId: chat.id,
-            authorId: {
-              not: sessionUser.user.id,
-            },
-            ...(membership?.lastReadAt
-              ? {
-                  createdAt: {
-                    gt: membership.lastReadAt,
-                  },
-                }
-              : {}),
-          },
-        });
+    const unreadRows = await prisma.$queryRaw<Array<{ chat_id: string; unread_count: bigint }>>`
+      SELECT cm.chat_id, COUNT(m.id)::int AS unread_count
+      FROM chat_members cm
+      LEFT JOIN messages m
+        ON m.chat_id = cm.chat_id
+        AND m.author_id != ${sessionUser.user.id}
+        AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
+      WHERE cm.user_id = ${sessionUser.user.id}
+      GROUP BY cm.chat_id
+    `;
 
-        return [chat.id, count] as const;
-      })
+    const unreadByChatId = Object.fromEntries(
+      unreadRows.map((row) => [row.chat_id, Number(row.unread_count)])
     );
-
-    const unreadByChatId = Object.fromEntries(unreadCounts);
 
     const items = chats
       .map((chat: ChatListQueryResult) =>

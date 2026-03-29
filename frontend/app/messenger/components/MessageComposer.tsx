@@ -1,3 +1,5 @@
+import { useLayoutEffect } from "react";
+
 import { Attachment, Message, UploadingAttachment } from "../types";
 import { EmojiPicker } from "./EmojiPicker";
 import { FilePreview } from "./FilePreview";
@@ -20,6 +22,9 @@ const COMMANDS = [
     description: "Убрать лишнее и сделать сообщение короче",
   },
 ] as const;
+
+const COMPOSER_MIN_HEIGHT_PX = 44;
+const COMPOSER_MAX_HEIGHT_PX = 176;
 
 type SmartAction = {
   command: (typeof COMMANDS)[number]["command"];
@@ -93,8 +98,24 @@ export function MessageComposer({
       })
     : [];
 
+  useLayoutEffect(() => {
+    const textarea = textInputRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = `${COMPOSER_MIN_HEIGHT_PX}px`;
+    const nextHeight = Math.min(
+      Math.max(textarea.scrollHeight, COMPOSER_MIN_HEIGHT_PX),
+      COMPOSER_MAX_HEIGHT_PX
+    );
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? "auto" : "hidden";
+  }, [editingMessageId, input, textInputRef]);
+
   return (
-    <div className="shrink-0 border-t border-[rgba(255,255,255,0.06)] bg-[rgba(31,40,56,0.92)] px-5 pb-3.5 pt-2.5 [font-family:Inter,system-ui,sans-serif]">
+    <div className="shrink-0 border-t border-[rgba(255,255,255,0.06)] bg-[rgba(31,40,56,0.92)] px-3 pb-3 pt-2 [font-family:Inter,system-ui,sans-serif] md:px-5 md:pb-3.5 md:pt-2.5">
       <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFileChange} />
 
       {storageWarning && (
@@ -211,12 +232,12 @@ export function MessageComposer({
         </div>
       )}
 
-      <div className="flex items-end gap-2 rounded-[17px] border border-[rgba(255,255,255,0.07)] bg-[rgba(35,45,63,0.96)] px-3 py-1.5 shadow-[0_10px_18px_rgba(8,14,28,0.1)]">
+      <div className="flex items-end gap-2 rounded-[17px] border border-[rgba(255,255,255,0.07)] bg-[rgba(35,45,63,0.96)] px-2.5 py-1.5 shadow-[0_10px_18px_rgba(8,14,28,0.1)] md:px-3">
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           title="Файл"
-          className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(255,255,255,0.04)] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.07)] hover:text-white"
+          className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgba(255,255,255,0.04)] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.07)] hover:text-white md:h-9 md:w-9"
         >
           <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="h-4 w-4">
             <path
@@ -234,7 +255,7 @@ export function MessageComposer({
             type="button"
             onClick={onToggleEmojiPicker}
             title="Эмодзи"
-            className="mb-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-[rgba(255,255,255,0.04)] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.07)] hover:text-white"
+            className="mb-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(255,255,255,0.04)] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.07)] hover:text-white md:h-9 md:w-9"
           >
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="h-4 w-4">
               <path
@@ -264,7 +285,7 @@ export function MessageComposer({
                 ? "Редактирование сообщения..."
                 : `Напишите сообщение ${currentUserName || "в чат"}...`
             }
-            className="max-h-28 min-h-[44px] w-full min-w-0 resize-none bg-transparent py-2.5 text-[13px] leading-[1.55] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            className="min-h-[44px] w-full min-w-0 resize-none overflow-y-hidden bg-transparent py-2.5 text-[13px] leading-[1.55] text-[var(--text-primary)] outline-none transition-[height] duration-100 ease-out placeholder:text-[var(--text-muted)]"
           />
         </div>
 
@@ -272,7 +293,7 @@ export function MessageComposer({
           <button
             type="button"
             onClick={onCancelEditing}
-            className="mb-0.5 h-9 shrink-0 rounded-xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.04)] px-4 text-sm font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.07)] hover:text-white"
+            className="mb-0.5 h-9 shrink-0 rounded-xl border border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.04)] px-3 text-sm font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.07)] hover:text-white md:px-4"
           >
             Отмена
           </button>
@@ -281,7 +302,7 @@ export function MessageComposer({
         <button
           type="button"
           onClick={onSend}
-          className="mb-0.5 inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[var(--accent)] px-4 text-[12px] font-semibold text-white shadow-[0_8px_16px_rgba(93,121,238,0.14)] transition-colors duration-150 hover:bg-[var(--accent-strong)]"
+          className="mb-0.5 inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[var(--accent)] px-3 text-[12px] font-semibold text-white shadow-[0_8px_16px_rgba(93,121,238,0.14)] transition-colors duration-150 hover:bg-[var(--accent-strong)] md:px-4"
         >
           {editingMessageId ? "Сохранить" : "Отправить"}
           <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="h-3.5 w-3.5">
@@ -296,7 +317,7 @@ export function MessageComposer({
         </button>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+      <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[9px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)] md:text-[10px]">
         <span>{trimmedInput.startsWith("/") ? "Enter — выполнить команду" : "Enter — отправить"}</span>
         <span>Shift+Enter — новая строка</span>
       </div>

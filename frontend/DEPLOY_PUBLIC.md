@@ -103,11 +103,10 @@ Run on the server from the project root:
 ### Windows installer build
 - `npm run desktop:build`
 - Installer output:
-  - `src-tauri/target/release/bundle/nsis/Svarka Weld Messenger_0.1.0_x64-setup.exe`
+  - `src-tauri/target/release/bundle/nsis/Svarka Weld Messenger_0.1.2_x64-setup.exe`
 
 ### Desktop bootstrap limitations
 - Unsigned Windows installer
-- No auto-update
 - No tray integration
 - Native notifications exist only inside the Tauri desktop app, not in the browser web runtime
 - Notification click is intended to focus the app and reopen the target chat in the running desktop shell
@@ -120,3 +119,59 @@ Run on the server from the project root:
 - This stage does not include push notifications, notification history, reply actions or sound alerts
 - No offline-first desktop mode
 - Desktop shell depends on the live server URL being reachable
+
+## Windows desktop self-update via Tauri
+- Current already-installed legacy builds without updater bootstrap cannot self-update.
+- One last manual transition install is required for users already on the old desktop build.
+- After that transition build, future Windows desktop releases are expected to use the built-in updater path.
+
+### Updater signing keys
+- Generate once on the release workstation:
+  - `npx tauri signer generate --ci -f -w C:\Users\denis\.tauri\svarka-weld-messenger-updater.key`
+- Keep the private key file secret.
+- Public key is embedded in `src-tauri/tauri.conf.json`.
+
+### Build signed updater artifacts
+- Build the installer:
+  - `npm run desktop:build`
+- Sign the installer explicitly:
+  - `npx tauri signer sign -f C:\Users\denis\.tauri\svarka-weld-messenger-updater.key --password="" "src-tauri/target/release/bundle/nsis/Svarka Weld Messenger_0.1.2_x64-setup.exe"`
+- Expected Windows updater artifacts:
+  - `src-tauri/target/release/bundle/nsis/Svarka Weld Messenger_0.1.2_x64-setup.exe`
+  - `src-tauri/target/release/bundle/nsis/Svarka Weld Messenger_0.1.2_x64-setup.exe.sig`
+
+### Publish updater manifest
+- Run:
+  - `npm run desktop:publish-update`
+- This writes:
+  - `public/desktop-updates/windows-x86_64/latest.json`
+  - `public/desktop-updates/windows-x86_64/Svarka Weld Messenger_0.1.2_x64-setup.exe`
+  - `public/desktop-updates/windows-x86_64/Svarka Weld Messenger_0.1.2_x64-setup.exe.sig`
+- After that, redeploy the public stack so `https://chat.svarka-weld.ru/desktop-updates/windows-x86_64/latest.json` serves the new manifest.
+
+## Tauri mobile bootstrap (Android/iOS)
+This stage is **bootstrap only** for mobile targets. It does not add new features or change business logic.
+
+### Prerequisites
+- Android:
+  - Android Studio + SDK
+  - `JAVA_HOME` set
+  - `ANDROID_SDK_ROOT` set
+- iOS:
+  - macOS + Xcode + Command Line Tools
+  - Apple signing setup
+
+### Bootstrap commands (run locally from repo root)
+- Android:
+  - `npx tauri android init`
+  - `npx tauri android dev`
+  - `npx tauri android build`
+- iOS (macOS only):
+  - `npx tauri ios init`
+  - `npx tauri ios dev`
+  - `npx tauri ios build`
+
+### Notes
+- Mobile init generates platform scaffolding in `src-tauri/gen/`.
+- If Android/iOS tooling is missing, init will fail; install prerequisites first.
+- Desktop build path remains unchanged.

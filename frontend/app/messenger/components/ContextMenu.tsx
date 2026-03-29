@@ -4,6 +4,7 @@ type Props = {
   contextMenu: { x: number; y: number } | null;
   contextMenuMessage: Message | null;
   currentUserId: string;
+  canDeleteAnyMessages?: boolean;
   contextMenuRef: React.RefObject<HTMLDivElement | null>;
   onAction: (action: "reply" | "copy" | "edit" | "delete" | "download" | "forward") => void;
 };
@@ -12,12 +13,15 @@ export function ContextMenu({
   contextMenu,
   contextMenuMessage,
   currentUserId,
+  canDeleteAnyMessages,
   contextMenuRef,
   onAction,
 }: Props) {
   if (!contextMenu || !contextMenuMessage) {
     return null;
   }
+
+  const canDeleteMessage = contextMenuMessage.authorId === currentUserId || Boolean(canDeleteAnyMessages);
 
   return (
     <div
@@ -44,12 +48,12 @@ export function ContextMenu({
         {
           key: "edit",
           label: "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c",
-          disabled: contextMenuMessage.authorId !== currentUserId,
+          disabled: contextMenuMessage.authorId !== currentUserId || !contextMenuMessage.text?.trim(),
         },
         {
           key: "delete",
           label: "\u0423\u0434\u0430\u043b\u0438\u0442\u044c",
-          disabled: contextMenuMessage.authorId !== currentUserId,
+          disabled: !canDeleteMessage,
         },
         ...(contextMenuMessage.attachments?.length
           ? [{ key: "download", label: "\u0421\u043a\u0430\u0447\u0430\u0442\u044c \u0444\u0430\u0439\u043b", disabled: false }]

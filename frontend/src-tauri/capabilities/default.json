@@ -13,12 +13,15 @@
   ],
   "permissions": [
     "core:default",
+    "dialog:default",
     "core:window:allow-is-minimized",
     "core:window:allow-request-user-attention",
     "core:window:allow-set-overlay-icon",
     "core:window:allow-set-focus",
     "core:window:allow-show",
     "core:window:allow-unminimize",
-    "notification:default"
+    "notification:default",
+    "opener:default",
+    "updater:default"
   ]
 }
