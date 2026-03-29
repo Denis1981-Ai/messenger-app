@@ -53,7 +53,7 @@ export function ChatListItem({ chat, currentUserId, isActive, unreadCount, onSel
           : "border-transparent bg-[rgba(255,255,255,0.02)] hover:border-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.045)]",
       ].join(" ")}
     >
-      <div className="flex items-start gap-3 px-3 py-2.5">
+      <div className="flex items-start gap-3 px-3 py-3 md:py-2.5">
         <div
           className={[
             "relative mt-0.5 flex shrink-0 items-center justify-center rounded-full font-semibold",
