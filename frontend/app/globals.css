@@ -329,6 +329,13 @@ body {
   white-space: nowrap;
 }
 
+.message-search-highlight {
+  border-radius: 5px;
+  background: rgba(245, 158, 11, 0.22);
+  color: #fde68a;
+  padding: 0 2px;
+}
+
 [data-theme="light"] .message-search-popover {
   border-color: rgba(44, 63, 95, 0.14);
   background: #ffffff !important;
@@ -342,6 +349,11 @@ body {
 
 [data-theme="light"] .message-search-result:hover {
   background: rgba(37, 99, 235, 0.08);
+}
+
+[data-theme="light"] .message-search-highlight {
+  background: rgba(245, 158, 11, 0.22);
+  color: #92400e;
 }
 
 .messenger-shell {

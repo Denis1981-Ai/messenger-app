@@ -36,6 +36,24 @@ type Props = {
 const presenceLabel = (presence?: User["presence"]) =>
   presence === "online" ? "Online" : "Не в сети";
 
+const normalizeSearchValue = (value: string) =>
+  value.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+
+const formatSearchCount = (count: number) => {
+  const lastDigit = count % 10;
+  const lastTwoDigits = count % 100;
+
+  if (lastDigit === 1 && lastTwoDigits !== 11) {
+    return `${count} совпадение`;
+  }
+
+  if (lastDigit >= 2 && lastDigit <= 4 && (lastTwoDigits < 12 || lastTwoDigits > 14)) {
+    return `${count} совпадения`;
+  }
+
+  return `${count} совпадений`;
+};
+
 const lastSeenLabel = (user: User): string => {
   if (user.presence === "online") return "В сети";
   if (!user.lastSeenAt) return "Не в сети";
@@ -123,8 +141,35 @@ export function ChatHeader({
       return "Ничего не найдено";
     }
 
-    return `${messageSearchResults.length} совпадений`;
+    return formatSearchCount(messageSearchResults.length);
   }, [messageSearch, messageSearchResults]);
+
+  const renderSearchTitle = (title: string) => {
+    const query = normalizeSearchValue(messageSearch);
+
+    if (!query) {
+      return title;
+    }
+
+    const normalizedTitle = normalizeSearchValue(title);
+    const matchIndex = normalizedTitle.indexOf(query);
+
+    if (matchIndex === -1) {
+      return title;
+    }
+
+    const before = title.slice(0, matchIndex);
+    const match = title.slice(matchIndex, matchIndex + query.length);
+    const after = title.slice(matchIndex + query.length);
+
+    return (
+      <>
+        {before}
+        <mark className="message-search-highlight">{match}</mark>
+        {after}
+      </>
+    );
+  };
 
   const subtitle = peerUser ? lastSeenLabel(peerUser) : "Рабочая переписка";
 
@@ -329,9 +374,7 @@ export function ChatHeader({
                     }}
                     className="message-search-result"
                   >
-                    <span className="message-search-result-title">
-                      {result.title}
-                    </span>
+                    <span className="message-search-result-title">{renderSearchTitle(result.title)}</span>
                     <span className="message-search-result-meta">{result.meta}</span>
                   </button>
                 ))}
@@ -391,9 +434,7 @@ export function ChatHeader({
                     }}
                     className="message-search-result"
                   >
-                    <span className="message-search-result-title">
-                      {result.title}
-                    </span>
+                    <span className="message-search-result-title">{renderSearchTitle(result.title)}</span>
                     <span className="message-search-result-meta">{result.meta}</span>
                   </button>
                 ))}

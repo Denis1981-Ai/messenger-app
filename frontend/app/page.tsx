@@ -20,6 +20,33 @@ const composerCommands = ["/ответ", "/перевод", "/сократить
 
 const countMatches = (value: string, pattern: RegExp) => (value.match(pattern) || []).length;
 
+const normalizeSearchValue = (value: string) =>
+  value.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+
+const buildSearchSnippet = (value: string, query: string, maxLength = 140) => {
+  const cleanValue = value.replace(/\s+/g, " ").trim();
+  const cleanQuery = normalizeSearchValue(query);
+
+  if (!cleanValue || !cleanQuery) {
+    return cleanValue;
+  }
+
+  const matchIndex = normalizeSearchValue(cleanValue).indexOf(cleanQuery);
+
+  if (matchIndex === -1) {
+    return cleanValue.length > maxLength ? `${cleanValue.slice(0, maxLength).trim()}...` : cleanValue;
+  }
+
+  const contextBefore = 42;
+  const contextAfter = maxLength - cleanQuery.length - contextBefore;
+  const start = Math.max(0, matchIndex - contextBefore);
+  const end = Math.min(cleanValue.length, matchIndex + cleanQuery.length + contextAfter);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < cleanValue.length ? "..." : "";
+
+  return `${prefix}${cleanValue.slice(start, end).trim()}${suffix}`;
+};
+
 const looksForeign = (value: string) => {
   const latin = countMatches(value, /[a-z]/gi);
   const cyrillic = countMatches(value, /[а-яё]/gi);
@@ -295,7 +322,7 @@ export default function Home() {
   const peerLastSeenAt = peerUser?.lastSeenAt ?? null;
 
   const messageSearchResults = useMemo(() => {
-    const query = messageSearch.trim().toLowerCase();
+    const query = normalizeSearchValue(messageSearch);
 
     if (!query) {
       return [];
@@ -303,11 +330,11 @@ export default function Home() {
 
     return messenger.currentChatMessages
       .filter((message) => {
-        const inText = message.text.toLowerCase().includes(query);
+        const inText = normalizeSearchValue(message.text).includes(query);
         const inFiles = (message.attachments || []).some(
           (attachment) =>
-            attachment.fileName.toLowerCase().includes(query) ||
-            attachment.fileType.toLowerCase().includes(query)
+            normalizeSearchValue(attachment.fileName).includes(query) ||
+            normalizeSearchValue(attachment.fileType).includes(query)
         );
 
         return inText || inFiles;
@@ -317,18 +344,18 @@ export default function Home() {
       .map((message) => {
         const normalizedText = message.text.replace(/\s+/g, " ").trim();
         const previewText = normalizedText
-          ? normalizedText
+          ? buildSearchSnippet(normalizedText, query)
           : (message.attachments || [])
               .map((attachment) =>
                 attachment.fileType.startsWith("image/")
-                  ? `Изображение: ${attachment.fileName}`
-                  : `Файл: ${attachment.fileName}`
+                  ? `Изображение: ${buildSearchSnippet(attachment.fileName, query)}`
+                  : `Файл: ${buildSearchSnippet(attachment.fileName, query)}`
               )
               .join(", ");
 
         return {
           id: message.id,
-          title: previewText.length > 120 ? `${previewText.slice(0, 120)}...` : previewText,
+          title: previewText.length > 160 ? `${previewText.slice(0, 160).trim()}...` : previewText,
           meta: `${formatMessageDate(message)} ${formatMessageTime(message)}`,
         };
       });
