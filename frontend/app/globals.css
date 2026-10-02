@@ -259,6 +259,91 @@ body {
   box-shadow: 0 10px 24px rgba(31, 45, 71, 0.055), inset 0 1px 0 rgba(255,255,255,0.96);
 }
 
+.message-search-popover {
+  max-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  background: #0b1220 !important;
+  padding: 8px;
+  box-shadow: 0 24px 52px rgba(2, 8, 23, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  isolation: isolate;
+}
+
+.message-search-summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: -8px -8px 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px 18px 0 0;
+  background: #0b1220 !important;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.message-search-result {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 62px;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 12px;
+  padding: 9px 12px;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.message-search-result:hover {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.message-search-result-title {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.message-search-result-meta {
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .message-search-popover {
+  border-color: rgba(44, 63, 95, 0.14);
+  background: #ffffff !important;
+  box-shadow: 0 24px 52px rgba(31, 45, 71, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="light"] .message-search-summary {
+  border-bottom-color: rgba(44, 63, 95, 0.1);
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .message-search-result:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
 .messenger-shell {
   box-shadow: none;
 }

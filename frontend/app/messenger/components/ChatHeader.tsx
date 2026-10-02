@@ -200,7 +200,7 @@ export function ChatHeader({
     "premium-panel flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-[var(--text-secondary)] transition-all duration-150 hover:border-[rgba(59,130,246,0.28)] hover:bg-[rgba(59,130,246,0.1)] hover:text-[var(--text-primary)] active:bg-[rgba(255,255,255,0.08)]";
 
   return (
-    <div className="chat-header-surface relative z-20 border-b border-[var(--border-soft)] backdrop-blur-xl">
+    <div className="chat-header-surface relative z-[100] border-b border-[var(--border-soft)] backdrop-blur-xl">
       {pinnedMessage && (
         <button
           type="button"
@@ -313,8 +313,8 @@ export function ChatHeader({
               />
             </label>
             {showSearchResults && (messageSearch.trim() || searchSummary) && (
-              <div className="premium-panel absolute left-0 right-0 top-[44px] z-50 max-h-[360px] overflow-y-auto rounded-[18px] border border-[rgba(255,255,255,0.09)] bg-[rgba(15,23,42,0.98)] p-2 shadow-[0_24px_48px_rgba(2,8,23,0.42)] backdrop-blur-xl">
-                <div className="sticky top-0 z-10 border-b border-white/[0.06] bg-[rgba(15,23,42,0.98)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <div className="message-search-popover absolute left-0 right-0 top-[44px] z-[1000]">
+                <div className="message-search-summary">
                   {searchSummary || "Начните вводить запрос"}
                 </div>
                 {messageSearchResults.map((result) => (
@@ -327,12 +327,12 @@ export function ChatHeader({
                       setShowMobileSearch(false);
                       onMessageSearchChange("");
                     }}
-                    className="mt-1 flex w-full min-w-0 flex-col rounded-[12px] px-3 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.05]"
+                    className="message-search-result"
                   >
-                    <span className="line-clamp-2 min-w-0 text-sm leading-[1.35] text-[var(--text-primary)]">
+                    <span className="message-search-result-title">
                       {result.title}
                     </span>
-                    <span className="mt-1 text-xs leading-none text-[var(--text-secondary)]">{result.meta}</span>
+                    <span className="message-search-result-meta">{result.meta}</span>
                   </button>
                 ))}
               </div>
@@ -376,8 +376,8 @@ export function ChatHeader({
             </label>
 
             {showSearchResults && (messageSearch.trim() || searchSummary) && (
-              <div className="premium-panel absolute left-0 right-0 top-[44px] z-50 max-h-[360px] overflow-y-auto rounded-[18px] border border-[rgba(255,255,255,0.09)] bg-[rgba(15,23,42,0.98)] p-2 shadow-[0_24px_48px_rgba(2,8,23,0.42)] backdrop-blur-xl">
-                <div className="sticky top-0 z-10 border-b border-white/[0.06] bg-[rgba(15,23,42,0.98)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <div className="message-search-popover absolute left-0 right-0 top-[44px] z-[1000]">
+                <div className="message-search-summary">
                   {searchSummary || "Начните вводить запрос"}
                 </div>
 
@@ -389,12 +389,12 @@ export function ChatHeader({
                       onJumpToMessage(result.id);
                       setShowSearchResults(false);
                     }}
-                    className="mt-1 flex w-full min-w-0 flex-col rounded-[12px] px-3 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.05]"
+                    className="message-search-result"
                   >
-                    <span className="line-clamp-2 min-w-0 text-sm leading-[1.35] text-[var(--text-primary)]">
+                    <span className="message-search-result-title">
                       {result.title}
                     </span>
-                    <span className="mt-1 text-xs leading-none text-[var(--text-secondary)]">{result.meta}</span>
+                    <span className="message-search-result-meta">{result.meta}</span>
                   </button>
                 ))}
               </div>
