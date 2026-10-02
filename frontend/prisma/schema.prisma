@@ -26,6 +26,7 @@ model User {
   messages          Message[]
   sessions          Session[]
   uploadedFiles     Attachment[] @relation("UploadedFiles")
+  reactions         Reaction[]
 
   @@map("users")
 }
@@ -47,12 +48,15 @@ model Chat {
 }
 
 model ChatMember {
-  chatId   String   @map("chat_id")
-  userId   String   @map("user_id")
-  joinedAt DateTime @default(now()) @map("joined_at")
+  chatId       String    @map("chat_id")
+  userId       String    @map("user_id")
+  joinedAt     DateTime  @default(now()) @map("joined_at")
   lastReadAt DateTime? @map("last_read_at")
-  chat     Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isPinned     Boolean   @default(false) @map("is_pinned")
+  isArchived   Boolean   @default(false) @map("is_archived")
+  isMuted      Boolean   @default(false) @map("is_muted")
+  chat         Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([chatId, userId])
   @@index([userId])
@@ -67,16 +71,32 @@ model Message {
   createdAt        DateTime     @default(now()) @map("created_at")
   editedAt         DateTime?    @map("edited_at")
   replyToMessageId String?      @map("reply_to_message_id")
+  isPinned         Boolean      @default(false) @map("is_pinned")
   chat             Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
   author           User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
   replyToMessage   Message?     @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
   replies          Message[]    @relation("MessageReplies")
   attachments      Attachment[]
+  reactions        Reaction[]
 
   @@index([chatId, createdAt])
   @@index([authorId])
   @@index([replyToMessageId])
   @@map("messages")
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at")
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("reactions")
 }
 
 model Attachment {

@@ -12,6 +12,7 @@ type Props = {
   isMine: boolean;
   isSelected: boolean;
   isHighlighted: boolean;
+  isGrouped?: boolean;
   authorName: string;
   quotePreview: { authorName: string; text: string };
   currentUserId: string;
@@ -24,9 +25,26 @@ type Props = {
   onQuickCopy: () => void;
   onQuickShorten: () => void;
   onQuickTranslate: () => void;
+  onOpenImage: (url: string, name: string) => void;
+  onToggleReaction: (messageId: string, emoji: string) => void;
 };
 
 type AttachmentActionStatus = "idle" | "pending" | "success" | "error";
+
+const REACTION_EMOJIS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F62E}", "\u{1F622}"];
+
+const renderTextWithMentions = (text: string, isMine: boolean) => {
+  const parts = text.split(/(@\S+)/g);
+  return parts.map((part, i) =>
+    part.startsWith("@") ? (
+      <span key={i} className={isMine ? "font-semibold text-white/90" : "font-semibold text-[var(--accent-soft)]"}>
+        {part}
+      </span>
+    ) : (
+      part
+    )
+  );
+};
 
 const dataUrlToBlob = async (dataUrl: string) => {
   const response = await fetch(dataUrl);
@@ -95,6 +113,7 @@ export function MessageItem({
   isMine,
   isSelected,
   isHighlighted,
+  isGrouped = false,
   authorName,
   quotePreview,
   selectedMode,
@@ -106,6 +125,8 @@ export function MessageItem({
   onQuickCopy,
   onQuickShorten,
   onQuickTranslate,
+  onOpenImage,
+  onToggleReaction,
 }: Props) {
   const statusDisplay = getStatusDisplay(message.status);
   const quickActions: Array<{ label: string; handler: () => void }> = [
@@ -114,6 +135,13 @@ export function MessageItem({
     { label: "Перевести", handler: onQuickTranslate },
     { label: "Копировать", handler: onQuickCopy },
   ];
+  const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
+  const trimmedText = message.text?.trim() || "";
+  const hasAttachmentCaption = hasAttachments && trimmedText.length > 0;
+  const isTextOnly = !hasAttachments && !message.replyToMessageId && trimmedText.length > 0;
+  const isCompactBubble =
+    isTextOnly && trimmedText.length <= 18 && !trimmedText.includes("\n") && trimmedText.split(/\s+/).length <= 2;
+  const shouldStretchBubble = hasAttachments || Boolean(message.replyToMessageId) || trimmedText.length > 140 || trimmedText.includes("\n");
   const [attachmentActionState, setAttachmentActionState] = useState<
     Record<string, AttachmentActionStatus>
   >({});
@@ -257,7 +285,7 @@ export function MessageItem({
         className={`inline-flex items-center rounded-full border px-3 py-2 text-[12px] font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_2px_6px_rgba(8,14,28,0.12)] transition-all duration-100 md:py-1.5 md:text-[11px] ${
           isMine
             ? "border-white/10 bg-white/12 text-white hover:border-white/18 hover:bg-white/24 hover:text-white disabled:border-white/12 disabled:bg-white/16 disabled:text-white/70"
-            : "border-white/[0.06] bg-[rgba(20,28,43,0.56)] text-[var(--accent-soft)] hover:border-white/[0.12] hover:bg-[rgba(20,28,43,0.88)] hover:text-white disabled:border-white/[0.08] disabled:bg-[rgba(20,28,43,0.72)] disabled:text-[var(--text-secondary)]"
+            : "border-[var(--msg-in-action-border)] bg-[var(--msg-in-action-bg)] text-[var(--msg-in-action-text)] hover:border-[var(--msg-in-action-border)] hover:bg-[var(--msg-in-action-bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-60 disabled:text-[var(--text-secondary)]"
         } ${
           actionState === "success"
             ? "ring-1 ring-emerald-400/45"
@@ -293,20 +321,48 @@ export function MessageItem({
       }}
       className={`flex ${isMine ? "justify-end" : "justify-start"} ${selectedMode ? "cursor-pointer" : ""}`}
     >
-      <div className={`group flex w-full max-w-[94%] flex-col ${isMine ? "items-end" : "items-start"} md:max-w-[65%]`}>
+      <div className={`group flex w-full min-w-0 max-w-[94%] flex-col ${isMine ? "items-end" : "items-start"} md:max-w-[62%] xl:max-w-[58%]`}>
+        {!isMine && !isGrouped && (
+          <div className="mb-1 px-1 text-[11px] font-semibold text-[var(--text-secondary)]">
+            {authorName}
+          </div>
+        )}
         <div
           ref={messageBubbleRef}
           className={[
-            "w-full rounded-[15px] border px-3.5 py-2 shadow-[0_8px_16px_rgba(9,14,28,0.07)] transition-colors duration-150 md:px-3.5 md:py-2",
+            `message-bubble msg-appear relative max-w-full rounded-[18px] border px-4 py-3 transition-all duration-150 md:px-4 md:py-3 ${
+              shouldStretchBubble
+                ? "w-full"
+                : isCompactBubble
+                  ? "w-fit min-w-[132px]"
+                  : "w-fit min-w-[220px]"
+            }`,
             isMine
-              ? "border-[rgba(113,132,215,0.36)] bg-[linear-gradient(180deg,#7184d7_0%,#6478ce_100%)] text-white"
-              : "border-[rgba(255,255,255,0.06)] bg-[rgba(49,59,76,0.92)] text-[var(--text-primary)]",
+              ? "border-[rgba(96,165,250,0.28)] bg-[linear-gradient(150deg,#2f6fed_0%,#2356c9_58%,#1d3f96_100%)] text-white shadow-[0_12px_28px_rgba(37,99,235,0.2),0_1px_3px_rgba(2,6,23,0.22),inset_0_1px_0_rgba(255,255,255,0.14)]"
+              : "msg-in-bubble border text-[var(--text-primary)]",
             isHighlighted ? "ring-2 ring-[rgba(93,121,238,0.55)] ring-offset-2 ring-offset-[var(--content-bg)]" : "",
             isSelected ? "ring-2 ring-[var(--accent)]" : "",
           ].join(" ")}
         >
           {!selectedMode && !hasTextSelectionInsideMessage && (
-            <div className="pointer-events-none mb-1.5 flex flex-wrap gap-1.5 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+            <div
+              className={`pointer-events-none absolute bottom-full z-20 mb-2 flex max-w-[min(520px,calc(100vw-48px))] flex-wrap gap-1.5 rounded-[14px] border border-[var(--border-soft)] bg-[rgba(9,15,28,0.92)] p-1.5 opacity-0 shadow-[0_16px_34px_rgba(2,6,23,0.32)] backdrop-blur transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 ${
+                isMine ? "right-2 justify-end" : "left-2"
+              }`}
+            >
+              {REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleReaction(message.id, emoji);
+                  }}
+                  className="rounded-full bg-black/10 px-1.5 py-0.5 text-[14px] transition-transform duration-100 hover:scale-110"
+                >
+                  {emoji}
+                </button>
+              ))}
               {quickActions.map(({ label, handler }) => (
                 <button
                   key={label}
@@ -318,7 +374,7 @@ export function MessageItem({
                   className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors duration-150 ${
                     isMine
                       ? "bg-white/12 text-white/84 hover:bg-white/18"
-                      : "bg-white/[0.05] text-[var(--text-secondary)] hover:bg-white/[0.08] hover:text-[var(--text-primary)]"
+                      : "bg-white/[0.055] text-[var(--text-secondary)] hover:bg-white/[0.09] hover:text-[var(--text-primary)]"
                   }`}
                 >
                   {label}
@@ -336,10 +392,10 @@ export function MessageItem({
                   onScrollToReply(message.replyToMessageId);
                 }
               }}
-              className={`mb-2 w-full rounded-[12px] border px-3 py-1 text-left transition-colors duration-150 ${
+              className={`mb-2 w-full rounded-[14px] border px-3 py-2 text-left transition-colors duration-150 ${
                 isMine
                   ? "border-white/16 bg-white/10 hover:bg-white/14"
-                  : "border-white/[0.06] bg-[rgba(20,28,43,0.56)] hover:bg-[rgba(20,28,43,0.7)]"
+                  : "msg-in-nested border"
               }`}
             >
               <div className={`text-[10px] font-semibold uppercase tracking-[0.12em] ${isMine ? "text-white/78" : "text-[var(--text-secondary)]"}`}>
@@ -351,19 +407,26 @@ export function MessageItem({
             </button>
           )}
 
-          <div className={`mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${isMine ? "text-white/72" : "text-[var(--text-muted)]"}`}>
-            {authorName}
-          </div>
-
           {message.text && (
             <div
               onCopy={handleMessageTextCopy}
               onContextMenu={allowNativeSelectionContextMenu}
-              className={`whitespace-pre-wrap break-words text-[13px] leading-[1.55] ${
-                message.attachments?.length ? "mb-2" : ""
-              } message-text relative z-[1] select-text ${isMine ? "message-text--mine" : "message-text--incoming"}`}
+              className={`message-text relative z-[1] select-text whitespace-pre-wrap break-words ${
+                hasAttachmentCaption
+                  ? `mb-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold leading-[1.55] ${
+                      isMine
+                        ? "border-white/14 bg-white/12 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                        : "border-[var(--border-soft)] bg-[rgba(59,130,246,0.08)] text-[var(--text-primary)]"
+                    }`
+                  : "text-[13px] leading-[1.62]"
+              } ${isMine ? "message-text--mine" : "message-text--incoming"}`}
             >
-              {message.text}
+              {hasAttachmentCaption && (
+                <div className={`mb-1 text-[10px] font-bold uppercase tracking-[0.12em] ${isMine ? "text-white/68" : "text-[var(--text-secondary)]"}`}>
+                  Комментарий к файлу
+                </div>
+              )}
+              {renderTextWithMentions(message.text, isMine)}
             </div>
           )}
 
@@ -381,16 +444,14 @@ export function MessageItem({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        void runAttachmentAction(`${attachment.id}:open`, async () => {
-                          await openAttachment(openUrl, attachment.fileName);
-                        });
+                        onOpenImage(openUrl, attachment.fileName);
                       }}
-                      className="group/image block overflow-hidden rounded-[12px]"
+                    className="group/image block overflow-hidden rounded-[14px]"
                     >
                       <img
                         src={openUrl}
                         alt={attachment.fileName}
-                        className="block max-w-full rounded-[12px] border border-white/8 shadow-[0_10px_18px_rgba(8,14,28,0.12)] transition-transform duration-150 group-hover/image:scale-[1.01] md:max-w-[288px]"
+                        className="block max-w-full rounded-[14px] border border-white/10 shadow-[0_12px_22px_rgba(2,6,23,0.16)] transition-transform duration-150 group-hover/image:scale-[1.01] md:max-w-[288px]"
                       />
                     </button>
                     <div className={`mt-1.5 text-[12px] ${isMine ? "text-white/76" : "text-[var(--text-secondary)]"}`}>
@@ -421,16 +482,29 @@ export function MessageItem({
                 ) : (
                   <div
                     key={attachment.id}
-                    className={`rounded-[12px] border px-3.5 py-2 ${
+                    className={`min-w-[260px] rounded-[15px] border px-3.5 py-3 md:min-w-[360px] ${
                       isMine
-                        ? "border-white/16 bg-white/10"
-                        : "border-white/[0.06] bg-[rgba(20,28,43,0.56)]"
+                        ? "border-white/16 bg-white/11 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                        : "msg-in-nested border"
                     }`}
                   >
-                    <div className="text-sm font-semibold">Документ • {attachment.fileName}</div>
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border text-[10px] font-bold uppercase ${
+                          isMine
+                            ? "border-white/16 bg-white/12 text-white"
+                            : "border-[var(--border-soft)] bg-[rgba(59,130,246,0.12)] text-[var(--accent-soft)]"
+                        }`}
+                      >
+                        {attachment.fileName.split(".").pop()?.slice(0, 3) || "FILE"}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="break-words text-sm font-semibold">{attachment.fileName}</div>
                     <div className={`mt-1 text-[12px] ${isMine ? "text-white/72" : "text-[var(--text-secondary)]"}`}>
                       {attachment.fileType}
                       {sizeLabel ? ` • ${sizeLabel}` : ""}
+                    </div>
+                      </div>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {renderAttachmentActionButton(attachment.id, "download", (event) => {
@@ -471,6 +545,31 @@ export function MessageItem({
             )}
           </div>
         </div>
+
+        {!selectedMode && (
+          <div className={`mt-1 flex flex-wrap gap-1 ${isMine ? "justify-end" : "justify-start"}`}>
+            {message.reactions?.map((reaction) => (
+              <button
+                key={reaction.emoji}
+                type="button"
+                title={reaction.hasCurrentUser ? "Убрать реакцию" : "Поставить такую же реакцию"}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleReaction(message.id, reaction.emoji);
+                }}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] transition-colors duration-100 ${
+                  reaction.hasCurrentUser
+                    ? "border-[rgba(93,121,238,0.45)] bg-[rgba(93,121,238,0.18)] text-[var(--accent-soft)]"
+                    : "border-white/[0.08] bg-[rgba(35,45,63,0.72)] text-[var(--text-primary)] hover:border-white/[0.14] hover:bg-[rgba(35,45,63,0.9)]"
+                }`}
+              >
+                <span>{reaction.emoji}</span>
+                <span className="text-[11px] font-medium">{reaction.count}</span>
+              </button>
+            ))}
+
+          </div>
+        )}
       </div>
     </div>
   );

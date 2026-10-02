@@ -19,6 +19,12 @@ export type Attachment = {
   fileSize?: number;
 };
 
+export type Reaction = {
+  emoji: string;
+  count: number;
+  hasCurrentUser: boolean;
+};
+
 export type UploadingAttachment = {
   id: string;
   fileName: string;
@@ -38,10 +44,14 @@ export type Message = {
   editedAt?: string;
   edited?: boolean;
   replyToMessageId?: string | null;
+  isPinned?: boolean;
   attachments?: Attachment[];
+  reactions?: Reaction[];
 };
 
 export type Chats = Record<string, Message[]>;
+
+export type ChatListFilter = "all" | "unread" | "pinned" | "archive";
 
 export type ChatSummary = {
   id: string;
@@ -50,6 +60,9 @@ export type ChatSummary = {
   updatedAt: string;
   members: User[];
   unreadCount?: number;
+  isPinned?: boolean;
+  isArchived?: boolean;
+  isMuted?: boolean;
   lastMessage: {
     id: string;
     text: string;
@@ -58,6 +71,15 @@ export type ChatSummary = {
   } | null;
   isVirtual?: boolean;
   directUserId?: string;
+};
+
+export type GlobalSearchResult = {
+  id: string;
+  chatId: string;
+  chatTitle: string;
+  authorName: string;
+  createdAt: string;
+  preview: string;
 };
 
 export type MessageContextMenuState = {

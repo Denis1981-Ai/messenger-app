@@ -1,24 +1,67 @@
 @import "tailwindcss";
 
 :root {
-  --background: #202a3a;
-  --foreground: #eef2ff;
-  --app-bg: #202a3a;
-  --shell-bg: #283445;
-  --sidebar-bg: #171d28;
-  --content-bg: #1d2430;
-  --surface-elevated: #313a4a;
-  --surface-muted: #161c27;
-  --surface-soft: #39475f;
-  --border-soft: rgba(166, 181, 203, 0.15);
-  --border-strong: rgba(166, 181, 203, 0.26);
-  --text-primary: #f3f6ff;
-  --text-secondary: #aeb9cb;
-  --text-muted: #8592a7;
-  --accent: #6e82df;
-  --accent-strong: #6073cf;
-  --accent-soft: #dee5ff;
-  --success: #53be96;
+  --background: #07101d;
+  --foreground: #f3f7ff;
+  --app-bg: #09111d;
+  --shell-bg: #101927;
+  --sidebar-bg: #07101d;
+  --content-bg: #0c1522;
+  --surface-elevated: #162235;
+  --surface-muted: #0d1725;
+  --surface-soft: #1e2d42;
+  --border-soft: rgba(148, 163, 184, 0.14);
+  --border-strong: rgba(148, 163, 184, 0.26);
+  --text-primary: #f7faff;
+  --text-secondary: #b7c4d8;
+  --text-muted: #738198;
+  --accent: #3b82f6;
+  --accent-strong: #2563eb;
+  --accent-soft: #bfdbfe;
+  --accent-warm: #f59e0b;
+  --success: #34d399;
+  /* Message bubble variables */
+  --msg-in-bg: rgba(22, 34, 53, 0.96);
+  --msg-in-border: rgba(148, 163, 184, 0.13);
+  --msg-in-nested-bg: rgba(8, 15, 27, 0.56);
+  --msg-in-nested-border: rgba(148, 163, 184, 0.1);
+  --msg-in-nested-bg-hover: rgba(8, 15, 27, 0.74);
+  --msg-in-action-bg: rgba(8, 15, 27, 0.5);
+  --msg-in-action-border: rgba(148, 163, 184, 0.12);
+  --msg-in-action-text: var(--accent-soft);
+  --msg-in-action-bg-hover: rgba(15, 23, 42, 0.88);
+}
+
+[data-theme="light"] {
+  --background: #f4f7fb;
+  --foreground: #142033;
+  --app-bg: #e9eef6;
+  --shell-bg: #ffffff;
+  --sidebar-bg: #f7faff;
+  --content-bg: #f7f9fd;
+  --surface-elevated: #ffffff;
+  --surface-muted: #f1f5fb;
+  --surface-soft: #e4ecf8;
+  --border-soft: rgba(44, 63, 95, 0.12);
+  --border-strong: rgba(44, 63, 95, 0.2);
+  --text-primary: #111827;
+  --text-secondary: #526176;
+  --text-muted: #8795aa;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: #1e40af;
+  --accent-warm: #d97706;
+  --success: #059669;
+  /* Message bubble variables - light theme */
+  --msg-in-bg: #ffffff;
+  --msg-in-border: rgba(80, 100, 160, 0.13);
+  --msg-in-nested-bg: rgba(220, 228, 245, 0.7);
+  --msg-in-nested-border: rgba(80, 100, 160, 0.12);
+  --msg-in-nested-bg-hover: rgba(205, 215, 240, 0.85);
+  --msg-in-action-bg: rgba(200, 212, 238, 0.55);
+  --msg-in-action-border: rgba(80, 100, 160, 0.15);
+  --msg-in-action-text: var(--accent-strong);
+  --msg-in-action-bg-hover: rgba(180, 196, 232, 0.75);
 }
 
 @theme inline {
@@ -33,9 +76,60 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
   color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background-image:
-    radial-gradient(circle at top, rgba(110, 130, 223, 0.09), transparent 34%),
-    linear-gradient(180deg, #253043 0%, #202a3a 100%);
+    radial-gradient(ellipse at 20% -10%, rgba(59, 130, 246, 0.12) 0%, transparent 45%),
+    radial-gradient(ellipse at 78% 0%, rgba(14, 165, 233, 0.07) 0%, transparent 38%),
+    linear-gradient(180deg, #0a1321 0%, #070d18 100%);
+}
+
+[data-theme="light"] body {
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  background-image:
+    radial-gradient(ellipse at 18% -10%, rgba(37, 99, 235, 0.07) 0%, transparent 42%),
+    linear-gradient(180deg, #eef3fb 0%, #f8fafd 100%);
+}
+
+/* ─── Premium thin scrollbar ─── */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 200, 0.18);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 200, 0.34);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(80, 100, 160, 0.2);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(80, 100, 160, 0.38);
+}
+
+/* Chat area background pattern */
+.chat-pattern-bg {
+  background-color: var(--content-bg);
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)),
+    radial-gradient(ellipse at 80% 16%, rgba(59, 130, 246, 0.07) 0%, transparent 44%),
+    radial-gradient(circle, rgba(148, 163, 184, 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 32px 32px;
+}
+
+[data-theme="light"] .chat-pattern-bg {
+  background-color: var(--content-bg);
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(247, 249, 253, 0.86)),
+    radial-gradient(circle, rgba(37, 99, 235, 0.04) 1px, transparent 1px);
+  background-size: 100% 100%, 30px 30px;
 }
 
 ::selection {
@@ -61,4 +155,212 @@ body {
 .message-text--incoming::-moz-selection {
   background: rgba(120, 145, 255, 0.52);
   color: #ffffff;
+}
+
+.message-bubble {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.message-text {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.message-text * {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.msg-appear {
+  animation: msg-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-up {
+  animation: fade-up 0.16s ease-out both;
+}
+
+@keyframes chat-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.chat-appear {
+  animation: chat-in 0.15s ease-out both;
+}
+
+/* ─── Message bubble explicit styles ─── */
+.msg-in-bubble {
+  background-color: var(--msg-in-bg);
+  border-color: var(--msg-in-border);
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.22), 0 1px 2px rgba(2, 6, 23, 0.16), inset 0 1px 0 rgba(255,255,255,0.055);
+}
+[data-theme="light"] .msg-in-bubble {
+  background-color: #ffffff;
+  border-color: rgba(80, 100, 160, 0.12);
+  box-shadow: 0 2px 12px rgba(80,100,150,0.1), 0 1px 3px rgba(80,100,150,0.06), inset 0 1px 0 rgba(255,255,255,0.95);
+}
+
+.msg-in-nested {
+  background-color: var(--msg-in-nested-bg);
+  border-color: var(--msg-in-nested-border);
+}
+[data-theme="light"] .msg-in-nested {
+  background-color: rgba(220, 228, 245, 0.7);
+  border-color: rgba(80, 100, 160, 0.12);
+}
+.msg-in-nested:hover {
+  background-color: var(--msg-in-nested-bg-hover);
+}
+[data-theme="light"] .msg-in-nested:hover {
+  background-color: rgba(205, 215, 240, 0.9);
+}
+
+/* Sidebar gradient (theme-aware) */
+.sidebar-theme-bg {
+  background:
+    linear-gradient(180deg, rgba(59, 130, 246, 0.055), transparent 30%),
+    linear-gradient(180deg, #0a1321 0%, #07101d 100%);
+}
+[data-theme="light"] .sidebar-theme-bg {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(246,249,254,0.96) 100%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+}
+
+.premium-panel {
+  background: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.026));
+  border-color: rgba(148, 163, 184, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.055);
+}
+
+[data-theme="light"] .premium-panel {
+  background: rgba(255,255,255,0.92);
+  border-color: rgba(44, 63, 95, 0.12);
+  box-shadow: 0 10px 24px rgba(31, 45, 71, 0.055), inset 0 1px 0 rgba(255,255,255,0.96);
+}
+
+.messenger-shell {
+  box-shadow: none;
+}
+
+@media (min-width: 768px) {
+  .messenger-shell {
+    box-shadow: 0 28px 70px rgba(2,6,23,0.34), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+}
+
+[data-theme="light"] .messenger-shell {
+  box-shadow: none;
+}
+
+@media (min-width: 768px) {
+  [data-theme="light"] .messenger-shell {
+    box-shadow: 0 24px 54px rgba(31,45,71,0.14), inset 0 1px 0 rgba(255,255,255,0.96);
+  }
+}
+
+.chat-header-surface {
+  background: rgba(13,23,37,0.86);
+}
+
+[data-theme="light"] .chat-header-surface {
+  background: rgba(255,255,255,0.88);
+  box-shadow: 0 1px 0 rgba(44,63,95,0.08), 0 10px 24px rgba(31,45,71,0.045);
+}
+
+.composer-surface {
+  background: rgba(7,16,29,0.94);
+}
+
+[data-theme="light"] .composer-surface {
+  background: rgba(255,255,255,0.9);
+  box-shadow: 0 -1px 0 rgba(44,63,95,0.08), 0 -16px 34px rgba(31,45,71,0.045);
+}
+
+[data-theme="light"] .composer-surface .premium-panel {
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(31,45,71,0.08), inset 0 1px 0 rgba(255,255,255,1);
+}
+
+.composer-icon-button {
+  background: rgba(255,255,255,0.045);
+}
+
+[data-theme="light"] .composer-icon-button {
+  background: #eef4fb;
+}
+
+[data-theme="light"] .composer-icon-button:hover {
+  background: rgba(37,99,235,0.1);
+  color: var(--accent-strong);
+}
+
+.scroll-bottom-button {
+  border-color: rgba(59,130,246,0.24);
+  background: rgba(15,23,42,0.92);
+  color: var(--accent-soft);
+  box-shadow: 0 14px 24px rgba(2,6,23,0.24);
+}
+
+[data-theme="light"] .scroll-bottom-button {
+  border-color: rgba(37,99,235,0.16);
+  background: rgba(255,255,255,0.94);
+  color: var(--accent-strong);
+  box-shadow: 0 12px 24px rgba(31,45,71,0.1);
+}
+
+.chat-list-item--active {
+  border-color: rgba(59,130,246,0.36);
+  background: linear-gradient(135deg, rgba(59,130,246,0.18) 0%, rgba(15,23,42,0.28) 100%);
+  box-shadow: 0 14px 30px rgba(2,6,23,0.22), inset 3px 0 0 rgba(59,130,246,0.72), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+[data-theme="light"] .chat-list-item--active {
+  border-color: rgba(37,99,235,0.28);
+  background: linear-gradient(135deg, #ffffff 0%, #eaf2ff 100%);
+  box-shadow: 0 12px 24px rgba(37,99,235,0.1), inset 3px 0 0 rgba(37,99,235,0.72), inset 0 1px 0 rgba(255,255,255,0.98);
+}
+
+.chat-list-item--idle:hover {
+  border-color: rgba(148,163,184,0.12);
+  background: rgba(255,255,255,0.045);
+}
+
+[data-theme="light"] .chat-list-item--idle:hover {
+  border-color: rgba(37,99,235,0.14);
+  background: rgba(255,255,255,0.78);
+}
+
+[data-theme="light"] .chat-list-active-preview {
+  color: var(--text-secondary);
+}
+
+/* Remove tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Touch-optimized buttons */
+button, [role="button"] {
+  touch-action: manipulation;
 }

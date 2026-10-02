@@ -18,6 +18,7 @@ type RouteContext = {
 
 type PatchMessageBody = {
   text?: string;
+  pin?: boolean;
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -44,6 +45,28 @@ export async function PATCH(request: Request, context: RouteContext) {
     body = (await request.json()) as PatchMessageBody;
   } catch {
     return badRequest("Invalid JSON body.");
+  }
+
+  // Pin/unpin action
+  if (typeof body.pin === "boolean") {
+    try {
+      if (body.pin) {
+        await prisma.message.updateMany({ where: { chatId, isPinned: true }, data: { isPinned: false } });
+      }
+      const message = await prisma.message.update({
+        where: { id: messageId },
+        data: { isPinned: body.pin },
+        include: {
+          author: { select: { id: true, name: true, login: true, displayName: true, lastSeenAt: true } },
+          attachments: { orderBy: { createdAt: "asc" } },
+          reactions: { select: { userId: true, emoji: true } },
+        },
+      });
+      return NextResponse.json({ message: serializeMessage(message, sessionUser.user.id) });
+    } catch (error) {
+      logServerError("messages.pin", error);
+      return internalServerError("Failed to pin message.");
+    }
   }
 
   const text = typeof body.text === "string" ? body.text.trim() : "";
@@ -98,11 +121,12 @@ export async function PATCH(request: Request, context: RouteContext) {
             createdAt: "asc",
           },
         },
+        reactions: { select: { userId: true, emoji: true } },
       },
     });
 
     return NextResponse.json({
-      message: serializeMessage(message),
+      message: serializeMessage(message, sessionUser.user.id),
     });
   } catch (error) {
     logServerError("messages.update", error);

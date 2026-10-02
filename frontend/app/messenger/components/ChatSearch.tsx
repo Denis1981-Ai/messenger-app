@@ -5,7 +5,7 @@ type Props = {
 
 export function ChatSearch({ value, onChange }: Props) {
   return (
-    <label className="group flex h-11 items-center gap-3 rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[rgba(19,27,40,0.88)] px-3.5 transition-colors duration-150 hover:border-[rgba(255,255,255,0.1)] focus-within:border-[rgba(93,121,238,0.35)]">
+    <label className="premium-panel group flex h-11 items-center gap-3 rounded-[16px] border px-3.5 transition-all duration-150 hover:border-[rgba(148,163,184,0.2)] focus-within:border-[rgba(59,130,246,0.44)] focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.1)]">
       <svg
         viewBox="0 0 20 20"
         fill="none"

@@ -25,7 +25,13 @@ type Props = {
   onQuickCopy: (messageId: string) => void;
   onQuickShorten: (messageId: string) => void;
   onQuickTranslate: (messageId: string) => void;
+  onOpenImage: (url: string, name: string) => void;
+  onToggleReaction: (messageId: string, emoji: string) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
+  peerLastSeenAt?: string | null;
 };
 
 const isNearBottom = (element: HTMLDivElement | null) => {
@@ -54,9 +60,17 @@ export function MessageList({
   onQuickCopy,
   onQuickShorten,
   onQuickTranslate,
+  onOpenImage,
+  onToggleReaction,
   messagesEndRef,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
+  peerLastSeenAt,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const prevScrollHeightRef = useRef<number | null>(null);
   const restoredKeyRef = useRef("");
   const lastSnapshotRef = useRef<{ chatKey: string; lastMessageId: string; count: number }>({
     chatKey: "",
@@ -65,6 +79,8 @@ export function MessageList({
   });
   const bottomStateRef = useRef(true);
   const [pendingNewMessages, setPendingNewMessages] = useState(0);
+  const [newMessageStartId, setNewMessageStartId] = useState<string | null>(null);
+  const [isAwayFromBottom, setIsAwayFromBottom] = useState(false);
 
   const chatStorageKey = `${SCROLL_STORAGE_KEY}:${currentUserId}:${currentChat}`;
   const messageCount = currentChatMessages.length;
@@ -91,15 +107,47 @@ export function MessageList({
     const targetTop = container.scrollHeight;
     container.scrollTo({ top: targetTop, behavior });
 
-    requestAnimationFrame(() => {
+    const pinToBottom = () => {
       if (containerRef.current) {
         containerRef.current.scrollTop = containerRef.current.scrollHeight;
       }
+    };
+
+    requestAnimationFrame(() => {
+      pinToBottom();
+      requestAnimationFrame(pinToBottom);
     });
+    window.setTimeout(pinToBottom, 80);
+    window.setTimeout(pinToBottom, 240);
 
     bottomStateRef.current = true;
+    setIsAwayFromBottom(false);
     setPendingNewMessages(0);
+    setNewMessageStartId(null);
     saveScrollPosition();
+  }, [saveScrollPosition]);
+
+  useEffect(() => {
+    const list = listRef.current;
+
+    if (!list || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (!bottomStateRef.current || !containerRef.current) {
+        return;
+      }
+
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      saveScrollPosition();
+    });
+
+    resizeObserver.observe(list);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
   }, [saveScrollPosition]);
 
   useLayoutEffect(() => {
@@ -135,6 +183,9 @@ export function MessageList({
 
     restoredKeyRef.current = chatStorageKey;
     bottomStateRef.current = isNearBottom(container);
+    setIsAwayFromBottom(!bottomStateRef.current);
+    setPendingNewMessages(0);
+    setNewMessageStartId(null);
     lastSnapshotRef.current = {
       chatKey: chatStorageKey,
       lastMessageId,
@@ -142,6 +193,18 @@ export function MessageList({
     };
     saveScrollPosition();
   }, [chatStorageKey, lastMessageId, messageCount, saveScrollPosition]);
+
+  // Preserve scroll position after older messages are prepended
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (prevScrollHeightRef.current !== null && container) {
+      const delta = container.scrollHeight - prevScrollHeightRef.current;
+      if (delta > 0) {
+        container.scrollTop += delta;
+      }
+      prevScrollHeightRef.current = null;
+    }
+  }, [messageCount]);
 
   useEffect(() => {
     const snapshot = lastSnapshotRef.current;
@@ -156,7 +219,10 @@ export function MessageList({
       return;
     }
 
-    const hasNewMessages = messageCount > snapshot.count && currentLastId !== snapshot.lastMessageId;
+    const hasNewMessages =
+      Boolean(currentLastId) &&
+      currentLastId !== snapshot.lastMessageId &&
+      messageCount >= snapshot.count;
 
     if (!hasNewMessages) {
       lastSnapshotRef.current = {
@@ -174,7 +240,11 @@ export function MessageList({
         scrollToBottom("smooth");
       });
     } else {
-      setPendingNewMessages((prev) => prev + (messageCount - snapshot.count));
+      const firstNewMessageId = currentChatMessages[snapshot.count]?.id || currentLastId;
+      requestAnimationFrame(() => {
+        setNewMessageStartId((prev) => prev || firstNewMessageId);
+        setPendingNewMessages((prev) => prev + Math.max(1, messageCount - snapshot.count));
+      });
     }
 
     lastSnapshotRef.current = {
@@ -182,21 +252,37 @@ export function MessageList({
       lastMessageId: currentLastId,
       count: messageCount,
     };
-  }, [chatStorageKey, currentUserId, lastMessageAuthorId, lastMessageId, messageCount, scrollToBottom]);
+  }, [
+    chatStorageKey,
+    currentChatMessages,
+    currentUserId,
+    lastMessageAuthorId,
+    lastMessageId,
+    messageCount,
+    scrollToBottom,
+  ]);
 
   return (
     <div
       ref={containerRef}
       onScroll={() => {
-        bottomStateRef.current = isNearBottom(containerRef.current);
+        const container = containerRef.current;
+        bottomStateRef.current = isNearBottom(container);
+        setIsAwayFromBottom(!bottomStateRef.current);
 
         if (bottomStateRef.current && pendingNewMessages > 0) {
           setPendingNewMessages(0);
+          setNewMessageStartId(null);
+        }
+
+        if (container && container.scrollTop < 120 && hasMore && !isLoadingMore) {
+          prevScrollHeightRef.current = container.scrollHeight;
+          onLoadMore();
         }
 
         saveScrollPosition();
       }}
-      className="relative flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(24,31,44,0.5)_0%,rgba(29,40,60,0)_18%)] px-3 py-3 md:px-6 md:py-4"
+      className="chat-appear relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-3 md:px-6 md:py-4"
     >
       {currentChatMessages.length === 0 ? (
         <div className="flex h-full items-center justify-center">
@@ -208,7 +294,12 @@ export function MessageList({
           </div>
         </div>
       ) : (
-        <div className="mx-auto flex w-full max-w-full flex-col gap-2.5 pb-6 md:max-w-[980px] md:pb-8">
+          <div ref={listRef} className="mx-auto flex w-full min-w-0 max-w-full flex-col pb-6 md:max-w-[1040px] md:pb-8">
+          {isLoadingMore && (
+            <div className="flex justify-center py-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[rgba(255,255,255,0.1)] border-t-[var(--accent)]" />
+            </div>
+          )}
           {currentChatMessages.map((message, index) => {
             const isMine = message.authorId === currentUserId;
             const isSelected = selectedMessageIds.includes(message.id);
@@ -221,22 +312,50 @@ export function MessageList({
             const currentMessageDate = formatMessageDate(message);
             const previousMessageDate = previousMessage ? formatMessageDate(previousMessage) : null;
             const shouldShowDateDivider = currentMessageDate !== previousMessageDate;
+            const isGrouped =
+              !shouldShowDateDivider &&
+              previousMessage !== null &&
+              previousMessage.authorId === message.authorId &&
+              !message.replyToMessageId &&
+              !previousMessage.replyToMessageId &&
+              new Date(message.createdAt || message.time).getTime() -
+                new Date(previousMessage.createdAt || previousMessage.time).getTime() <
+                5 * 60 * 1000;
+
+            const effectiveStatus = (() => {
+              if (!isMine) return message.status;
+              const createdAt = message.createdAt ? new Date(message.createdAt).getTime() : 0;
+              if (peerLastSeenAt && new Date(peerLastSeenAt).getTime() > createdAt) return "read";
+              return "delivered";
+            })();
 
             return (
-              <div key={message.id}>
+              <div
+                key={message.id}
+                className={isGrouped ? "mt-0.5" : "mt-2.5"}
+              >
+                {newMessageStartId === message.id && (
+                  <div className="mb-2 flex justify-center md:mb-2.5">
+                    <div className="rounded-full border border-[rgba(59,130,246,0.28)] bg-[rgba(59,130,246,0.14)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-soft)] shadow-[0_8px_18px_rgba(2,6,23,0.16)]">
+                      Новые сообщения
+                    </div>
+                  </div>
+                )}
+
                 {shouldShowDateDivider && (
                   <div className="mb-2 flex justify-center md:mb-2.5">
-                    <div className="rounded-full border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.035)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
+                    <div className="premium-panel rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">
                       {currentMessageDate}
                     </div>
                   </div>
                 )}
 
                 <MessageItem
-                  message={message}
+                  message={{ ...message, status: effectiveStatus }}
                   isMine={isMine}
                   isSelected={isSelected}
                   isHighlighted={highlightedMessageId === message.id}
+                  isGrouped={isGrouped}
                   authorName={authorName}
                   quotePreview={quotePreview}
                   currentUserId={currentUserId}
@@ -251,6 +370,8 @@ export function MessageList({
                   onQuickCopy={() => onQuickCopy(message.id)}
                   onQuickShorten={() => onQuickShorten(message.id)}
                   onQuickTranslate={() => onQuickTranslate(message.id)}
+                  onOpenImage={onOpenImage}
+                  onToggleReaction={onToggleReaction}
                 />
               </div>
             );
@@ -258,13 +379,14 @@ export function MessageList({
         </div>
       )}
 
-      {pendingNewMessages > 0 && (
+      {(pendingNewMessages > 0 || isAwayFromBottom) && (
         <button
           type="button"
           onClick={() => scrollToBottom("smooth")}
-          className="sticky bottom-4 left-1/2 z-[3] ml-auto mr-0 flex rounded-full border border-[rgba(93,121,238,0.2)] bg-[rgba(34,45,66,0.96)] px-4 py-2 text-sm font-medium text-[var(--accent-soft)] shadow-[0_14px_24px_rgba(9,14,28,0.22)] backdrop-blur-sm transition-colors duration-150 hover:bg-[var(--surface-soft)]"
+          className="scroll-bottom-button sticky bottom-4 z-[3] ml-auto mr-0 flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium backdrop-blur-sm transition-all duration-150 hover:border-[rgba(59,130,246,0.42)] hover:bg-[var(--surface-soft)]"
         >
-          {`Новые сообщения: ${pendingNewMessages}`}
+          <span aria-hidden="true">↓</span>
+          <span>{pendingNewMessages > 0 ? `Новые сообщения: ${pendingNewMessages}` : "Вниз"}</span>
         </button>
       )}
 

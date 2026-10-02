@@ -75,6 +75,33 @@ export const saveIncomingFile = async (file: File) => {
   };
 };
 
+export const copyStoredAttachment = async (attachment: {
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storageKey: string;
+}) => {
+  await ensureUploadsStorageReady();
+
+  const buffer = await readStoredFile(attachment.storageKey);
+  const safeName = sanitizeFilename(attachment.originalName);
+  const now = new Date();
+  const year = String(now.getUTCFullYear());
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const storageKey = `${year}/${month}/${randomUUID()}-${safeName}`;
+  const targetPath = resolveStoragePath(storageKey);
+
+  await mkdir(path.dirname(targetPath), { recursive: true });
+  await writeFile(targetPath, buffer);
+
+  return {
+    originalName: safeName,
+    mimeType: resolveAttachmentMimeType(attachment.mimeType, safeName),
+    sizeBytes: attachment.sizeBytes || buffer.byteLength,
+    storageKey,
+  };
+};
+
 export const removeStoredFile = async (storageKey: string) => {
   if (!storageKey) {
     return;

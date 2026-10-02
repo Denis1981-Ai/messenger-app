@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeMessage } from "@/lib/server/message-serialization";
 import { unauthorized } from "@/lib/server/response";
 import { getCurrentSessionUser } from "@/lib/server/session";
+import { getTypingUsers } from "@/lib/typing-state";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,8 +72,16 @@ export async function GET(request: Request) {
 
           if (newMessages.length > 0) {
             lastChecked = newMessages[newMessages.length - 1].createdAt;
-            const data = JSON.stringify({ messages: newMessages.map(serializeMessage) });
-            controller.enqueue(encoder.encode(`event: messages\ndata: ${data}\n\n`));
+            const data = JSON.stringify({
+              messages: newMessages.map((message) => serializeMessage(message, sessionUser.user.id)),
+            });
+            controller.enqueue(encoder.encode("event: messages\ndata: " + data + "\n\n"));
+          }
+
+          if (chatId) {
+            const typingUsers = getTypingUsers(chatId, sessionUser.user.id);
+            const typingData = JSON.stringify({ users: typingUsers, chatId });
+            controller.enqueue(encoder.encode("event: typing\ndata: " + typingData + "\n\n"));
           }
         } catch {
           // Keep connection alive on DB errors — best-effort

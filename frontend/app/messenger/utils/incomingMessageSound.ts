@@ -77,33 +77,53 @@ export const playIncomingMessageSound = async () => {
   }
 
   const startAt = context.currentTime + 0.01;
+  const compressor = context.createDynamicsCompressor();
+  compressor.threshold.setValueAtTime(-20, startAt);
+  compressor.knee.setValueAtTime(18, startAt);
+  compressor.ratio.setValueAtTime(6, startAt);
+  compressor.attack.setValueAtTime(0.003, startAt);
+  compressor.release.setValueAtTime(0.18, startAt);
+  compressor.connect(context.destination);
+
   const gainNode = context.createGain();
-  gainNode.connect(context.destination);
+  gainNode.connect(compressor);
   gainNode.gain.setValueAtTime(0.0001, startAt);
-  gainNode.gain.exponentialRampToValueAtTime(0.045, startAt + 0.012);
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.18);
-  gainNode.gain.setValueAtTime(0.0001, startAt + 0.2);
-  gainNode.gain.exponentialRampToValueAtTime(0.04, startAt + 0.215);
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.36);
+  gainNode.gain.exponentialRampToValueAtTime(0.11, startAt + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.16);
+  gainNode.gain.setValueAtTime(0.0001, startAt + 0.18);
+  gainNode.gain.exponentialRampToValueAtTime(0.085, startAt + 0.195);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.34);
+  gainNode.gain.setValueAtTime(0.0001, startAt + 0.36);
+  gainNode.gain.exponentialRampToValueAtTime(0.12, startAt + 0.375);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.56);
 
   const oscillatorA = context.createOscillator();
-  oscillatorA.type = "triangle";
-  oscillatorA.frequency.setValueAtTime(740, startAt);
-  oscillatorA.frequency.exponentialRampToValueAtTime(880, startAt + 0.16);
+  oscillatorA.type = "square";
+  oscillatorA.frequency.setValueAtTime(920, startAt);
+  oscillatorA.frequency.exponentialRampToValueAtTime(1140, startAt + 0.14);
   oscillatorA.connect(gainNode);
   oscillatorA.start(startAt);
-  oscillatorA.stop(startAt + 0.18);
+  oscillatorA.stop(startAt + 0.16);
 
   const oscillatorB = context.createOscillator();
-  oscillatorB.type = "triangle";
-  oscillatorB.frequency.setValueAtTime(988, startAt + 0.2);
-  oscillatorB.frequency.exponentialRampToValueAtTime(1174, startAt + 0.34);
+  oscillatorB.type = "square";
+  oscillatorB.frequency.setValueAtTime(1180, startAt + 0.18);
+  oscillatorB.frequency.exponentialRampToValueAtTime(1320, startAt + 0.32);
   oscillatorB.connect(gainNode);
-  oscillatorB.start(startAt + 0.2);
-  oscillatorB.stop(startAt + 0.36);
+  oscillatorB.start(startAt + 0.18);
+  oscillatorB.stop(startAt + 0.34);
 
-  oscillatorB.onended = () => {
+  const oscillatorC = context.createOscillator();
+  oscillatorC.type = "triangle";
+  oscillatorC.frequency.setValueAtTime(880, startAt + 0.36);
+  oscillatorC.frequency.exponentialRampToValueAtTime(1280, startAt + 0.54);
+  oscillatorC.connect(gainNode);
+  oscillatorC.start(startAt + 0.36);
+  oscillatorC.stop(startAt + 0.56);
+
+  oscillatorC.onended = () => {
     gainNode.disconnect();
+    compressor.disconnect();
   };
 
   return true;

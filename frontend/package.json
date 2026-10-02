@@ -20,7 +20,8 @@
     "user:disable": "node scripts/user-admin.js disable",
     "ops:backup": "node scripts/db-backup.js",
     "ops:restore": "node scripts/db-restore.js",
-    "ops:smoke": "node scripts/smoke-check.js"
+    "ops:smoke": "node scripts/smoke-check.js",
+    "ops:smoke:two-user": "node scripts/two-user-ui-smoke.js"
   },
   "dependencies": {
     "@prisma/client": "6.16.2",
@@ -39,6 +40,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.7",
+    "playwright": "^1.63.0",
     "prisma": "6.16.2",
     "tailwindcss": "^4",
     "typescript": "^5"

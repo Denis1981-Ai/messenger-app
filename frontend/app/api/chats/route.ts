@@ -22,6 +22,9 @@ type ChatListQueryResult = {
   members: Array<{
     userId: string;
     lastReadAt?: Date | null;
+    isPinned?: boolean;
+    isArchived?: boolean;
+    isMuted?: boolean;
     user: {
       id: string;
       name: string;
@@ -64,6 +67,7 @@ const lastMessageSelect = {
 
 const toChatListItem = (chat: ChatListQueryResult, currentUserId: string, unreadCount = 0) => {
   const lastMessage = chat.messages[0] ?? null;
+  const currentMember = chat.members.find((member) => member.userId === currentUserId);
 
   return {
     id: chat.id,
@@ -72,6 +76,9 @@ const toChatListItem = (chat: ChatListQueryResult, currentUserId: string, unread
     updatedAt: lastMessage?.createdAt ?? chat.createdAt,
     members: chat.members.map(toClientChatMember),
     unreadCount,
+    isPinned: currentMember?.isPinned ?? false,
+    isArchived: currentMember?.isArchived ?? false,
+    isMuted: currentMember?.isMuted ?? false,
     lastMessage: lastMessage
       ? {
           id: lastMessage.id,

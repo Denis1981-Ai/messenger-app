@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Internal corporate messenger for Svarka Weld employees",
     start_url: "/",
     scope: "/",
-    display: "standalone",
+    display: "browser",
     background_color: "#0f172a",
     theme_color: "#0f172a",
     icons: [

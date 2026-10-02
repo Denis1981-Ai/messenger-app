@@ -6,7 +6,10 @@ import { resolveUserDisplayName } from "@/lib/server/user-display";
 
 type AttachmentRecord = Pick<Attachment, "id" | "originalName" | "mimeType" | "sizeBytes">;
 
+type ReactionRecord = { userId: string; emoji: string };
+
 type MessageRecord = Pick<Message, "id" | "chatId" | "authorId" | "text" | "createdAt" | "editedAt" | "replyToMessageId"> & {
+  isPinned?: boolean;
   author: {
     id: string;
     name: string;
@@ -14,6 +17,7 @@ type MessageRecord = Pick<Message, "id" | "chatId" | "authorId" | "text" | "crea
     displayName?: string | null;
   };
   attachments?: AttachmentRecord[];
+  reactions?: ReactionRecord[];
 };
 
 const getAttachmentLabel = (attachment?: AttachmentRecord | null) =>
@@ -50,7 +54,17 @@ export const serializeAttachment = (attachment: AttachmentRecord) => ({
   fileData: getAttachmentDownloadUrl(attachment.id),
 });
 
-export const serializeMessage = (message: MessageRecord) => ({
+export const serializeReactions = (reactions: ReactionRecord[], currentUserId?: string) => {
+  const grouped: Record<string, { count: number; hasCurrentUser: boolean }> = {};
+  for (const r of reactions) {
+    if (!grouped[r.emoji]) grouped[r.emoji] = { count: 0, hasCurrentUser: false };
+    grouped[r.emoji].count++;
+    if (r.userId === currentUserId) grouped[r.emoji].hasCurrentUser = true;
+  }
+  return Object.entries(grouped).map(([emoji, data]) => ({ emoji, ...data }));
+};
+
+export const serializeMessage = (message: MessageRecord, currentUserId?: string) => ({
   id: message.id,
   chatId: message.chatId,
   authorId: message.authorId,
@@ -59,7 +73,9 @@ export const serializeMessage = (message: MessageRecord) => ({
   createdAt: message.createdAt,
   editedAt: message.editedAt,
   replyToMessageId: message.replyToMessageId,
+  isPinned: message.isPinned ?? false,
   attachments: Array.isArray(message.attachments)
     ? message.attachments.map(serializeAttachment)
     : [],
+  reactions: serializeReactions(Array.isArray(message.reactions) ? message.reactions : [], currentUserId),
 });

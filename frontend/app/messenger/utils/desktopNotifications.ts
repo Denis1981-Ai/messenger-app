@@ -271,6 +271,9 @@ export async function getDesktopNotificationsBridge(): Promise<DesktopNotificati
           autoCancel: true,
           extra: payload.chatId ? { chatId: payload.chatId } : {},
         });
+        await appWindow.requestUserAttention(windowModule.UserAttentionType.Critical).catch(() => {
+          return appWindow.requestUserAttention(windowModule.UserAttentionType.Informational).catch(() => {});
+        });
         recordDesktopNotificationEvent("notification-send-dispatched", {
           hasBody: Boolean(payload.body),
           hasChatId: Boolean(payload.chatId),

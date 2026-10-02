@@ -3,13 +3,16 @@
 import { KeyboardEvent, useMemo, useState } from "react";
 
 import { ChatHeader } from "./messenger/components/ChatHeader";
+import { ChatFilesPanel } from "./messenger/components/ChatFilesPanel";
 import { ContextMenu } from "./messenger/components/ContextMenu";
+import { DesktopRuntimeGuard } from "./messenger/components/DesktopRuntimeGuard";
 import { DesktopUpdaterPrompt } from "./messenger/components/DesktopUpdaterPrompt";
 import { MessageComposer } from "./messenger/components/MessageComposer";
 import { MessageList } from "./messenger/components/MessageList";
 import { SelectionToolbar } from "./messenger/components/SelectionToolbar";
 import { Sidebar } from "./messenger/components/Sidebar";
 import { useMessengerController } from "./messenger/hooks/useMessengerController";
+import { useTheme } from "./messenger/hooks/useTheme";
 import { Message } from "./messenger/types";
 import { formatMessageDate, formatMessageTime } from "./messenger/utils/format";
 
@@ -38,8 +41,11 @@ const looksForeign = (value: string) => {
 
 export default function Home() {
   const messenger = useMessengerController();
+  const { theme, toggleTheme } = useTheme();
   const [messageSearch, setMessageSearch] = useState("");
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
+  const [isFilesPanelOpen, setIsFilesPanelOpen] = useState(false);
 
   const getCommandSource = (sourceOverride?: string) => {
     const safeOverride = sourceOverride?.trim();
@@ -270,6 +276,24 @@ export default function Home() {
     }
   };
 
+  const currentChatSummary = useMemo(
+    () => messenger.filteredChatSummaries.find((c) => c.id === messenger.currentChat) || null,
+    [messenger.filteredChatSummaries, messenger.currentChat]
+  );
+
+  const currentChatMentionUsers = useMemo(
+    () => (currentChatSummary?.members || []).filter((member) => member.id !== messenger.currentUserId),
+    [currentChatSummary?.members, messenger.currentUserId]
+  );
+
+  const peerUser = useMemo(() => {
+    const summary = currentChatSummary;
+    if (!summary || summary.isGroup) return null;
+    return summary.members.find((m) => m.id !== messenger.currentUserId) ?? null;
+  }, [currentChatSummary, messenger.currentUserId]);
+
+  const peerLastSeenAt = peerUser?.lastSeenAt ?? null;
+
   const messageSearchResults = useMemo(() => {
     const query = messageSearch.trim().toLowerCase();
 
@@ -291,19 +315,20 @@ export default function Home() {
       .slice(-12)
       .reverse()
       .map((message) => {
-        const previewText = message.text.trim()
-          ? message.text
+        const normalizedText = message.text.replace(/\s+/g, " ").trim();
+        const previewText = normalizedText
+          ? normalizedText
           : (message.attachments || [])
               .map((attachment) =>
                 attachment.fileType.startsWith("image/")
-                  ? `🖼 ${attachment.fileName}`
-                  : `📎 ${attachment.fileName}`
+                  ? `Изображение: ${attachment.fileName}`
+                  : `Файл: ${attachment.fileName}`
               )
               .join(", ");
 
         return {
           id: message.id,
-          title: previewText.length > 90 ? `${previewText.slice(0, 90)}...` : previewText,
+          title: previewText.length > 120 ? `${previewText.slice(0, 120)}...` : previewText,
           meta: `${formatMessageDate(message)} ${formatMessageTime(message)}`,
         };
       });
@@ -364,10 +389,11 @@ export default function Home() {
 
   return (
     <>
+      <DesktopRuntimeGuard />
       <DesktopUpdaterPrompt />
       <div className="h-[100dvh] overflow-hidden bg-[var(--app-bg)] [font-family:Inter,system-ui,sans-serif] md:h-screen">
-        <div className="flex h-full w-full items-stretch justify-center p-0 md:p-3">
-          <div className="flex h-full w-full max-w-[1450px] overflow-hidden rounded-none border border-[rgba(255,255,255,0.07)] bg-[var(--shell-bg)] shadow-none md:rounded-[22px] md:shadow-[0_22px_52px_rgba(8,14,28,0.18)]">
+        <div className="flex h-full w-full min-w-0 items-stretch justify-center overflow-hidden p-0 md:p-3">
+          <div className="messenger-shell flex h-full w-full max-w-[1480px] overflow-hidden rounded-none border border-[var(--border-soft)] bg-[var(--shell-bg)] md:rounded-[24px]">
             <Sidebar
               className={isMobileChatOpen ? "hidden md:block" : "block"}
               filteredChats={messenger.filteredChatSummaries}
@@ -376,23 +402,42 @@ export default function Home() {
               unreadByChat={messenger.unreadByChat}
               search={messenger.search}
               onSearchChange={messenger.setSearch}
+              globalSearchResults={messenger.globalSearchResults}
+              globalSearchPending={messenger.globalSearchPending}
+              onOpenGlobalSearchResult={(result) => {
+                messenger.openGlobalSearchResult(result);
+                setIsMobileChatOpen(true);
+              }}
+              chatListFilter={messenger.chatListFilter}
+              chatFilterCounts={messenger.chatFilterCounts}
+              pinnedChatIds={messenger.pinnedChatIds}
+              archivedChatIds={messenger.archivedChatIds}
+              mutedChatIds={messenger.mutedChatIds}
+              onChatListFilterChange={messenger.setChatListFilter}
               onOpenCreateConversation={messenger.openCreateConversation}
+              theme={theme}
+              onToggleTheme={toggleTheme}
               onSelectChat={(chatId) => {
                 messenger.setCurrentChat(chatId);
                 setIsMobileChatOpen(true);
+                setIsFilesPanelOpen(false);
               }}
               onDeleteChat={messenger.deleteChat}
+              onTogglePinnedChat={messenger.togglePinnedChat}
+              onToggleArchivedChat={messenger.toggleArchivedChat}
+              onToggleMutedChat={messenger.toggleMutedChat}
               onResetComposer={messenger.cancelEditing}
             />
 
             <div
-              className={`min-h-0 min-w-0 flex-1 flex-col bg-[var(--content-bg)] ${
+              className={`chat-pattern-bg min-h-0 min-w-0 flex-1 flex-col ${
                 isMobileChatOpen ? "flex" : "hidden md:flex"
               }`}
             >
               <ChatHeader
                 currentChat={messenger.currentChatTitle || messenger.currentChat}
                 currentUserId={messenger.currentUserId}
+                peerUser={peerUser}
                 users={messenger.users}
                 copySuccess={messenger.copySuccess}
                 isSelectionMode={messenger.isSelectionMode}
@@ -409,7 +454,16 @@ export default function Home() {
                 onToggleSelectionMode={messenger.toggleSelectionMode}
                 onRenameChat={messenger.renameCurrentChat}
                 onDeleteChat={() => messenger.deleteChat(messenger.currentChat)}
+                onToggleMutedChat={() => messenger.toggleMutedChat(messenger.currentChat)}
+                onToggleFilesPanel={() => setIsFilesPanelOpen((value) => !value)}
                 onOpenSettings={messenger.openDisplayNameSettings}
+                isMuted={messenger.mutedChatIds.includes(messenger.currentChat)}
+                pinnedMessage={messenger.pinnedMessage}
+                onScrollToPinned={() => {
+                  if (messenger.pinnedMessage) {
+                    messenger.scrollToMessage(messenger.pinnedMessage.id);
+                  }
+                }}
               />
 
               {messenger.isSelectionMode && (
@@ -454,18 +508,44 @@ export default function Home() {
                   onQuickCopy={messenger.copySingleMessage}
                   onQuickShorten={(messageId) => applyMessageCommand(messageId, "/сократить")}
                   onQuickTranslate={(messageId) => applyMessageCommand(messageId, "/перевод")}
+                  onOpenImage={(url, name) => setLightbox({ url, name })}
+                  onToggleReaction={messenger.toggleReaction}
                   messagesEndRef={messenger.messagesEndRef}
+                  hasMore={messenger.hasMoreByChat[messenger.currentChat] ?? false}
+                  isLoadingMore={messenger.isLoadingMore}
+                  onLoadMore={messenger.loadMoreMessages}
+                  peerLastSeenAt={peerLastSeenAt}
+                />
+
+                <ChatFilesPanel
+                  isOpen={isFilesPanelOpen}
+                  messages={messenger.currentChatMessages}
+                  users={messenger.users}
+                  onClose={() => setIsFilesPanelOpen(false)}
+                  onJumpToMessage={(messageId) => {
+                    setIsFilesPanelOpen(false);
+                    messenger.scrollToMessage(messageId);
+                  }}
                 />
               </div>
 
+              {messenger.typingUsers.length > 0 && (
+                <div className="shrink-0 px-4 pb-1 text-[12px] text-[var(--text-secondary)] md:px-6">
+                  {messenger.typingUsers.join(", ")} {messenger.typingUsers.length === 1 ? "печатает" : "печатают"}...
+                </div>
+              )}
+
               <MessageComposer
                 storageWarning={messenger.storageWarning}
+                failedSendDrafts={messenger.currentFailedSendDrafts}
                 replyingToMessage={messenger.replyingToMessage}
                 editingMessageId={messenger.editingMessageId}
                 pendingAttachments={messenger.pendingAttachments}
                 uploadingAttachments={messenger.uploadingAttachments}
                 showEmojiPicker={messenger.showEmojiPicker}
                 currentUserName={messenger.currentUser?.name || "Я"}
+                currentChatTitle={messenger.currentChatTitle || "текущий чат"}
+                mentionUsers={currentChatMentionUsers}
                 input={messenger.input}
                 smartActions={smartActions}
                 textInputRef={messenger.textInputRef}
@@ -475,14 +555,21 @@ export default function Home() {
                 getQuotePreview={messenger.getQuotePreview}
                 onRemovePendingAttachment={messenger.removePendingAttachment}
                 onFileChange={messenger.handleFileChange}
+                onChooseFiles={messenger.chooseFiles}
                 onToggleEmojiPicker={() => messenger.setShowEmojiPicker(!messenger.showEmojiPicker)}
                 onInsertEmoji={messenger.insertEmoji}
-                onInputChange={messenger.setInput}
+                onInputChange={messenger.handleInputChange}
                 onPaste={messenger.handlePaste}
                 onKeyDown={handleComposerKeyDown}
                 onRunCommand={runComposerCommand}
                 onCancelEditing={messenger.cancelEditing}
+                onRetryFailedSend={messenger.retryFailedSend}
+                onDiscardFailedSend={messenger.discardFailedSend}
                 onSend={messenger.sendMessage}
+                isFileDragOver={messenger.isChatDragOver}
+                onFileDragOver={messenger.handleChatDragOver}
+                onFileDragLeave={messenger.handleChatDragLeave}
+                onFileDrop={messenger.handleChatDrop}
               />
             </div>
           </div>
@@ -496,6 +583,7 @@ export default function Home() {
         canDeleteAnyMessages={messenger.canDeleteAnyMessages}
         contextMenuRef={messenger.contextMenuRef}
         onAction={messenger.handleContextMenuAction}
+        onReaction={messenger.toggleContextMenuReaction}
       />
 
       {messenger.isCreateConversationOpen && (
@@ -570,6 +658,93 @@ export default function Home() {
                 className="h-11 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white disabled:cursor-default disabled:opacity-60"
               >
                 {messenger.createConversationPending ? "\u0421\u043e\u0437\u0434\u0430\u0451\u043c..." : "\u0421\u043e\u0437\u0434\u0430\u0442\u044c"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+            aria-label="Закрыть"
+          >
+            <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
+              <path d="M5 5L15 15M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          </button>
+          <a
+            href={lightbox.url}
+            download={lightbox.name}
+            onClick={(e) => e.stopPropagation()}
+            className="absolute right-16 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+            aria-label="Скачать"
+          >
+            <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
+              <path d="M10 3v10M6 9l4 4 4-4M4 17h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </a>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox.url}
+            alt={lightbox.name}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] max-w-[92vw] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.7)] md:max-w-[85vw]"
+          />
+        </div>
+      )}
+
+      {messenger.forwardingMessage && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#020617]/68 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-[480px] rounded-[24px] border border-[var(--border-soft)] bg-[var(--shell-bg)] p-6 shadow-[0_24px_48px_rgba(4,10,24,0.34)]">
+            <div className="text-[22px] font-semibold tracking-[-0.03em] text-[var(--text-primary)]">Переслать сообщение</div>
+            <p className="mt-1.5 max-h-10 overflow-hidden text-sm leading-5 text-[var(--text-secondary)]">
+              {messenger.forwardingMessageCount > 1
+                ? `${messenger.forwardingMessageCount} сообщений`
+                : messenger.forwardingPreviewText || "Сообщение"}
+            </p>
+            <div className="mt-5">
+              <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">Выберите чат</div>
+              <div className="max-h-[280px] space-y-1.5 overflow-y-auto rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-muted)] p-3">
+                {messenger.chatSummaries.filter((c) => !c.isVirtual).length === 0 ? (
+                  <div className="px-2 py-3 text-sm text-[var(--text-secondary)]">Нет доступных чатов.</div>
+                ) : (
+                  messenger.chatSummaries
+                    .filter((c) => !c.isVirtual)
+                    .map((chat) => (
+                      <button
+                        key={chat.id}
+                        type="button"
+                        onClick={() => void messenger.executeForward(chat.id)}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-[rgba(148,163,184,0.08)] bg-[rgba(20,28,43,0.72)] px-3 py-3 text-left transition-all duration-150 hover:bg-[var(--content-bg)]"
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgba(93,121,238,0.15)] text-sm font-semibold text-[var(--accent-soft)]">
+                          {chat.title.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-[var(--text-primary)]">{chat.title}</span>
+                          {chat.lastMessage && (
+                            <span className="mt-0.5 block truncate text-xs text-[var(--text-secondary)]">{chat.lastMessage.text || "Файл"}</span>
+                          )}
+                        </span>
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={messenger.closeForwardMessage}
+                className="h-11 rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-muted)] px-5 text-sm font-medium text-[var(--text-primary)]"
+              >
+                Отмена
               </button>
             </div>
           </div>

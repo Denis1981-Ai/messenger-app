@@ -6,8 +6,14 @@ type Props = {
   currentChat: string;
   currentUserId: string;
   unreadByChat: Record<string, number>;
+  pinnedChatIds: string[];
+  archivedChatIds: string[];
+  mutedChatIds: string[];
   onSelectChat: (chatId: string) => void;
   onDeleteChat?: (chatId: string) => void;
+  onTogglePinnedChat: (chatId: string) => void;
+  onToggleArchivedChat: (chatId: string) => void;
+  onToggleMutedChat: (chatId: string) => void;
 };
 
 export function ChatList({
@@ -15,8 +21,14 @@ export function ChatList({
   currentChat,
   currentUserId,
   unreadByChat,
+  pinnedChatIds,
+  archivedChatIds,
+  mutedChatIds,
   onSelectChat,
   onDeleteChat,
+  onTogglePinnedChat,
+  onToggleArchivedChat,
+  onToggleMutedChat,
 }: Props) {
   if (filteredChats.length === 0) {
     return (
@@ -33,7 +45,7 @@ export function ChatList({
 
   return (
     <div className="h-full overflow-y-auto pr-1">
-      <div className="space-y-2 pb-2">
+      <div className="space-y-1.5 pb-2">
         {filteredChats.map((chat) => (
           <ChatListItem
             key={chat.id}
@@ -41,8 +53,14 @@ export function ChatList({
             currentUserId={currentUserId}
             isActive={currentChat === chat.id}
             unreadCount={unreadByChat[chat.id] || 0}
+            isPinned={pinnedChatIds.includes(chat.id)}
+            isArchived={archivedChatIds.includes(chat.id)}
+            isMuted={mutedChatIds.includes(chat.id)}
             onSelect={onSelectChat}
             onDelete={onDeleteChat}
+            onTogglePin={onTogglePinnedChat}
+            onToggleArchive={onToggleArchivedChat}
+            onToggleMute={onToggleMutedChat}
           />
         ))}
       </div>

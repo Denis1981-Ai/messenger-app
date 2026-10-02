@@ -14,9 +14,12 @@ import {
 
 import {
   Attachment,
+  ChatListFilter,
   ChatSummary,
+  GlobalSearchResult,
   Message,
   MessageContextMenuState,
+  Reaction,
   UploadingAttachment,
   User,
 } from "../types";
@@ -32,6 +35,7 @@ const NOT_AVAILABLE_MESSAGE = "Недоступно в text pilot.";
 const ACTIVE_CHAT_POLL_INTERVAL_MS = 30 * 1000; // fallback when SSE is unavailable
 const CHAT_LIST_POLL_INTERVAL_MS = 8 * 1000;
 const APP_TITLE = "Svarka Weld Messenger";
+const FLASHING_APP_TITLE = "Новое сообщение — Svarka Weld Messenger";
 const UNREAD_ATTENTION_DEBUG_KEY = "messenger:debug-unread-attention";
 
 type SessionUser = {
@@ -62,7 +66,9 @@ type ServerMessage = {
   createdAt: string;
   editedAt?: string | null;
   replyToMessageId?: string | null;
+  isPinned?: boolean;
   attachments?: ServerAttachment[];
+  reactions?: Reaction[];
 };
 
 type ServerChatResponse = {
@@ -73,6 +79,7 @@ type ServerChatResponse = {
     members: User[];
   };
   messages: ServerMessage[];
+  hasMore?: boolean;
 };
 
 type LoginResponse = {
@@ -113,6 +120,27 @@ type UsersResponse = {
 
 type ChatsResponse = {
   chats: ServerChatSummary[];
+};
+
+type DesktopUploadFile = {
+  fileName?: string;
+  file_name?: string;
+  fileType?: string;
+  file_type?: string;
+  bytes?: number[];
+};
+
+const hasTauriRuntime = () =>
+  typeof window !== "undefined" &&
+  typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+
+type FailedSendDraft = {
+  id: string;
+  chatId: string;
+  text: string;
+  replyToMessageId?: string | null;
+  createdAt: string;
+  error: string;
 };
 
 const createLocalId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -178,15 +206,55 @@ const toClientMessage = (message: ServerMessage, currentUserId: string): Message
     minute: "2-digit",
   }),
   createdAt: message.createdAt,
-  status: "read",
   isEdited: Boolean(message.editedAt),
   edited: Boolean(message.editedAt),
   editedAt: message.editedAt || undefined,
   replyToMessageId: message.replyToMessageId || null,
+  isPinned: message.isPinned ?? false,
   attachments: Array.isArray(message.attachments)
     ? message.attachments.map(toClientAttachment)
     : [],
+  reactions: Array.isArray(message.reactions) ? message.reactions : [],
+  status: "delivered",
 });
+
+const getMessageTimeValue = (message: Message) => {
+  const value = new Date(message.createdAt || message.time).getTime();
+  return Number.isFinite(value) ? value : 0;
+};
+
+const mergeFetchedMessagesWithVisible = (
+  fetchedMessages: Message[],
+  visibleMessages: Message[],
+  requestStartedAt: number
+) => {
+  const fetchedIds = new Set(fetchedMessages.map((message) => message.id));
+  const latestFetchedTime = fetchedMessages.reduce(
+    (latest, message) => Math.max(latest, getMessageTimeValue(message)),
+    0
+  );
+
+  const preservedMessages = visibleMessages.filter((message) => {
+    if (fetchedIds.has(message.id)) {
+      return false;
+    }
+
+    if (message.id.startsWith("local-")) {
+      return true;
+    }
+
+    const messageTime = getMessageTimeValue(message);
+    return messageTime > latestFetchedTime && messageTime >= requestStartedAt - 1000;
+  });
+
+  if (preservedMessages.length === 0) {
+    return fetchedMessages;
+  }
+
+  return [...fetchedMessages, ...preservedMessages]
+    .sort((left, right) => getMessageTimeValue(left) - getMessageTimeValue(right))
+    .filter((message, index, messages) => messages.findIndex((item) => item.id === message.id) === index);
+};
 
 const getQuotePreview = (message: Message | null, users: User[]) => {
   if (!message) {
@@ -311,16 +379,23 @@ export const useMessengerController = () => {
   const [createConversationMemberIds, setCreateConversationMemberIds] = useState<string[]>([]);
   const [createConversationPending, setCreateConversationPending] = useState(false);
   const [createConversationError, setCreateConversationError] = useState("");
+  const [forwardingMessages, setForwardingMessages] = useState<Message[]>([]);
 
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({});
   const [currentChat, setCurrentChatState] = useState("");
+  const [draftsByChat, setDraftsByChat] = useState<Record<string, string>>({});
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const typingThrottleRef = useRef<number | null>(null);
 
   const [input, setInput] = useState("");
   const [newChatName, setNewChatName] = useState("");
   const [search, setSearch] = useState("");
+  const [globalSearchResults, setGlobalSearchResults] = useState<GlobalSearchResult[]>([]);
+  const [globalSearchPending, setGlobalSearchPending] = useState(false);
+  const [chatListFilter, setChatListFilterState] = useState<ChatListFilter>("all");
   const [copySuccess, setCopySuccess] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [replyingToMessageId, setReplyingToMessageId] = useState<string | null>(null);
@@ -333,6 +408,11 @@ export const useMessengerController = () => {
   const [contextMenu, setContextMenu] = useState<MessageContextMenuState | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState<UploadingAttachment[]>([]);
+  const [failedSendDrafts, setFailedSendDrafts] = useState<FailedSendDraft[]>([]);
+
+  const [hasMoreByChat, setHasMoreByChat] = useState<Record<string, boolean>>({});
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const oldestMessageIdRef = useRef<Record<string, string | null>>({});
 
   const pendingFilesRef = useRef<Record<string, File>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -351,12 +431,19 @@ export const useMessengerController = () => {
   const currentChatRef = useRef("");
   const triggerActiveChatRefreshRef = useRef<(() => void) | null>(null);
   const currentUserIdRef = useRef("");
+  const currentChatSummaryRef = useRef<ChatSummary | null>(null);
 
   const currentUserId = currentUser?.id || "";
   const canDeleteAnyMessages =
     (currentUser?.login || "").toLowerCase() === "weld.info@yandex.ru" ||
     (currentUser?.displayName || "").toLowerCase() === "weld.info@yandex.ru";
   const users = useMemo(() => (currentUser ? [currentUser, ...availableUsers] : availableUsers), [availableUsers, currentUser]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setChatListFilterState("all");
+    }
+  }, [currentUserId]);
 
   const visibleChatSummaries = useMemo(() => {
     if (!currentUser) {
@@ -388,6 +475,10 @@ export const useMessengerController = () => {
   }, [availableUsers, chatSummaries, currentUser]);
 
   const currentChatMessages = useMemo(() => messagesByChat[currentChat] || [], [messagesByChat, currentChat]);
+  const currentFailedSendDrafts = useMemo(
+    () => failedSendDrafts.filter((draft) => draft.chatId === currentChat),
+    [currentChat, failedSendDrafts]
+  );
 
   const messagesById = useMemo(
     () => Object.fromEntries(currentChatMessages.map((message) => [message.id, message])),
@@ -396,25 +487,105 @@ export const useMessengerController = () => {
 
   const replyingToMessage = replyingToMessageId ? messagesById[replyingToMessageId] || null : null;
   const contextMenuMessage = contextMenu ? messagesById[contextMenu.messageId] || null : null;
+  const pinnedMessage = useMemo(
+    () => currentChatMessages.find((m) => m.isPinned) ?? null,
+    [currentChatMessages]
+  );
   const selectedMessages = useMemo(
     () => currentChatMessages.filter((message) => selectedMessageIds.includes(message.id)),
     [currentChatMessages, selectedMessageIds]
   );
 
+  const pinnedChatIds = useMemo(
+    () => visibleChatSummaries.filter((chat) => !chat.isVirtual && chat.isPinned).map((chat) => chat.id),
+    [visibleChatSummaries]
+  );
+  const archivedChatIds = useMemo(
+    () => visibleChatSummaries.filter((chat) => !chat.isVirtual && chat.isArchived).map((chat) => chat.id),
+    [visibleChatSummaries]
+  );
+  const mutedChatIds = useMemo(
+    () => visibleChatSummaries.filter((chat) => !chat.isVirtual && chat.isMuted).map((chat) => chat.id),
+    [visibleChatSummaries]
+  );
+
+  const chatFilterCounts = useMemo(() => {
+    const realChats = visibleChatSummaries.filter((chat) => !chat.isVirtual);
+    const activeChats = realChats.filter((chat) => !chat.isArchived);
+
+    return {
+      all: activeChats.length + visibleChatSummaries.filter((chat) => chat.isVirtual).length,
+      unread: activeChats.filter((chat) => (chat.unreadCount || 0) > 0).length,
+      pinned: activeChats.filter((chat) => chat.isPinned).length,
+      archive: realChats.filter((chat) => chat.isArchived).length,
+    } satisfies Record<ChatListFilter, number>;
+  }, [visibleChatSummaries]);
+
   const filteredChatSummaries = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const compareByUpdatedAt = (left: ChatSummary, right: ChatSummary) =>
+      new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+    const compareForList = (left: ChatSummary, right: ChatSummary) => {
+      const leftPinned = Boolean(left.isPinned);
+      const rightPinned = Boolean(right.isPinned);
 
-    if (!query) {
-      return visibleChatSummaries;
+      if (leftPinned !== rightPinned) {
+        return leftPinned ? -1 : 1;
+      }
+
+      return compareByUpdatedAt(left, right);
+    };
+
+    const visibleByFilter = visibleChatSummaries.filter((chat) => {
+      const isArchived = Boolean(chat.isArchived);
+      const isPinned = Boolean(chat.isPinned);
+      const unreadCount = chat.unreadCount || 0;
+
+      if (chat.isVirtual) {
+        return chatListFilter === "all" && !isArchived;
+      }
+
+      if (chatListFilter === "archive") {
+        return isArchived;
+      }
+
+      if (isArchived) {
+        return false;
+      }
+
+      if (chatListFilter === "unread") {
+        return unreadCount > 0;
+      }
+
+      if (chatListFilter === "pinned") {
+        return isPinned;
+      }
+
+      return true;
+    });
+
+    const searched = !query
+      ? visibleByFilter
+      : visibleByFilter.filter((chat) => {
+          const inTitle = chat.title.toLowerCase().includes(query);
+          const inLastMessage = chat.lastMessage?.text?.toLowerCase().includes(query) || false;
+          const inAuthor = chat.lastMessage?.authorName?.toLowerCase().includes(query) || false;
+          const inMembers = chat.members.some(
+            (member) =>
+              member.name.toLowerCase().includes(query) ||
+              member.login?.toLowerCase().includes(query) ||
+              member.displayName?.toLowerCase().includes(query)
+          );
+
+          return inTitle || inLastMessage || inAuthor || inMembers;
+        });
+
+    if (chatListFilter === "archive") {
+      return [...searched].sort(compareByUpdatedAt);
     }
 
-    return visibleChatSummaries.filter((chat) => {
-      const inTitle = chat.title.toLowerCase().includes(query);
-      const inLastMessage = chat.lastMessage?.text?.toLowerCase().includes(query) || false;
-      const inAuthor = chat.lastMessage?.authorName?.toLowerCase().includes(query) || false;
-      return inTitle || inLastMessage || inAuthor;
-    });
-  }, [search, visibleChatSummaries]);
+    return [...searched].sort(compareForList);
+  }, [chatListFilter, search, visibleChatSummaries]);
 
   const filteredChats = useMemo(() => filteredChatSummaries.map((chat) => chat.id), [filteredChatSummaries]);
   const createConversationCandidates = useMemo(() => availableUsers, [availableUsers]);
@@ -509,6 +680,19 @@ export const useMessengerController = () => {
     pendingFilesRef.current = {};
   }, []);
 
+  const scrollActiveChatToBottom = useCallback(() => {
+    const scroll = () => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    };
+
+    requestAnimationFrame(() => {
+      scroll();
+      requestAnimationFrame(scroll);
+    });
+    window.setTimeout(scroll, 80);
+    window.setTimeout(scroll, 260);
+  }, []);
+
   const markChatRead = useCallback(async (chatId: string, latestMessageId?: string | null) => {
     if (!chatId || !latestMessageId || lastReadMarkerRef.current[chatId] === latestMessageId) {
       return;
@@ -537,17 +721,22 @@ export const useMessengerController = () => {
         return;
       }
 
-      const response = await fetchJson<ServerChatResponse>(`/api/chats/${chatId}/messages`, {
+      const requestStartedAt = Date.now();
+      const response = await fetchJson<ServerChatResponse>(`/api/chats/${chatId}/messages?limit=50`, {
         method: "GET",
       });
 
+      const clientMessages = Array.isArray(response.messages)
+        ? response.messages.map((message) => toClientMessage(message, userId))
+        : [];
+
       setMessagesByChat((prev) => ({
         ...prev,
-        [chatId]: Array.isArray(response.messages)
-          ? response.messages.map((message) => toClientMessage(message, userId))
-          : [],
+        [chatId]: mergeFetchedMessagesWithVisible(clientMessages, prev[chatId] || [], requestStartedAt),
       }));
       latestFetchedMessageIdRef.current[chatId] = response.messages.at(-1)?.id || null;
+      oldestMessageIdRef.current[chatId] = response.messages[0]?.id || null;
+      setHasMoreByChat((prev) => ({ ...prev, [chatId]: response.hasMore ?? false }));
 
       if (options?.markAsRead) {
         const latestMessageId = response.messages.at(-1)?.id || null;
@@ -558,6 +747,33 @@ export const useMessengerController = () => {
     },
     [markChatRead]
   );
+
+  const loadMoreMessages = useCallback(async () => {
+    if (!currentChat || !currentUserId || isLoadingMore) return;
+    const oldestId = oldestMessageIdRef.current[currentChat];
+    if (!oldestId || !hasMoreByChat[currentChat]) return;
+
+    setIsLoadingMore(true);
+    try {
+      const response = await fetchJson<ServerChatResponse>(
+        `/api/chats/${currentChat}/messages?limit=50&before=${encodeURIComponent(oldestId)}`,
+        { method: "GET" }
+      );
+      const olderMessages = Array.isArray(response.messages)
+        ? response.messages.map((m) => toClientMessage(m, currentUserId))
+        : [];
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [currentChat]: [...olderMessages, ...(prev[currentChat] || [])],
+      }));
+      oldestMessageIdRef.current[currentChat] = response.messages[0]?.id || null;
+      setHasMoreByChat((prev) => ({ ...prev, [currentChat]: response.hasMore ?? false }));
+    } catch {
+      // Keep load-more best-effort.
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [currentChat, currentUserId, hasMoreByChat, isLoadingMore]);
 
   const getDesktopViewState = useCallback(
     async (chatId: string): Promise<DesktopViewState> => {
@@ -648,6 +864,10 @@ export const useMessengerController = () => {
   }, [currentUserId]);
 
   useEffect(() => {
+    currentChatSummaryRef.current = currentChatSummary;
+  }, [currentChatSummary]);
+
+  useEffect(() => {
     if (typeof document === "undefined") {
       return;
     }
@@ -688,6 +908,46 @@ export const useMessengerController = () => {
       totalUnreadCount,
       badgeSupported: typeof badgeNavigator.setAppBadge === "function",
     });
+  }, [isAuthenticated, totalUnreadCount]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return;
+    }
+
+    const isHidden = document.visibilityState !== "visible";
+    const hasFocus = typeof document.hasFocus === "function" ? document.hasFocus() : true;
+    const shouldFlash = isAuthenticated && totalUnreadCount > 0 && (isHidden || !hasFocus);
+
+    if (!shouldFlash) {
+      document.title = isAuthenticated && totalUnreadCount > 0 ? `(${totalUnreadCount}) ${APP_TITLE}` : APP_TITLE;
+      recordUnreadAttentionEvent("attention-flash-stop", {
+        totalUnreadCount,
+        isHidden,
+        hasFocus,
+      });
+      return;
+    }
+
+    let showAlertTitle = true;
+    document.title = FLASHING_APP_TITLE;
+    recordUnreadAttentionEvent("attention-flash-start", {
+      totalUnreadCount,
+      isHidden,
+      hasFocus,
+    });
+
+    const intervalId = window.setInterval(() => {
+      showAlertTitle = !showAlertTitle;
+      document.title = showAlertTitle
+        ? FLASHING_APP_TITLE
+        : `(${totalUnreadCount}) ${APP_TITLE}`;
+    }, 900);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.title = isAuthenticated && totalUnreadCount > 0 ? `(${totalUnreadCount}) ${APP_TITLE}` : APP_TITLE;
+    };
   }, [isAuthenticated, totalUnreadCount]);
 
   useEffect(() => {
@@ -809,6 +1069,18 @@ export const useMessengerController = () => {
       }
 
       const notificationsToSend = notificationCandidates.filter((chat) => {
+        if (chat.isMuted) {
+          recordUnreadAttentionEvent("desktop-notification-suppressed", {
+            chatId: chat.id,
+            reason: "chat-muted",
+            isFocused: viewState.isFocused,
+            isMinimized: viewState.isMinimized,
+            isDocumentVisible: viewState.isDocumentVisible,
+            hasDocumentFocus: viewState.hasDocumentFocus,
+          });
+          return false;
+        }
+
         const shouldSuppress = viewState.isViewingChat && currentChatRef.current === chat.id;
         if (shouldSuppress) {
           recordUnreadAttentionEvent("desktop-notification-suppressed", {
@@ -947,6 +1219,18 @@ export const useMessengerController = () => {
           unreadCount: desktopNotificationSnapshotRef.current[chatId]?.unreadCount || 0,
         };
 
+        if (currentChatSummary?.isMuted) {
+          recordUnreadAttentionEvent("desktop-notification-suppressed", {
+            chatId,
+            reason: "active-chat-muted",
+            isFocused: viewState.isFocused,
+            isMinimized: viewState.isMinimized,
+            isDocumentVisible: viewState.isDocumentVisible,
+            hasDocumentFocus: viewState.hasDocumentFocus,
+          });
+          return;
+        }
+
         if (!hasNewIncomingMessage || viewState.isViewingChat) {
           if (viewState.isViewingChat) {
             recordUnreadAttentionEvent("desktop-notification-suppressed", {
@@ -1033,6 +1317,15 @@ export const useMessengerController = () => {
 
     eventSource.addEventListener("messages", () => {
       triggerActiveChatRefreshRef.current?.();
+    });
+
+    eventSource.addEventListener("typing", (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data) as { users: string[]; chatId: string };
+        if (payload.chatId === currentChat) {
+          setTypingUsers(Array.isArray(payload.users) ? payload.users : []);
+        }
+      } catch {}
     });
 
     return () => {
@@ -1206,7 +1499,9 @@ export const useMessengerController = () => {
 
     void sendHeartbeat();
     const intervalId = window.setInterval(() => {
-      void sendHeartbeat();
+      if (document.visibilityState === "visible") {
+        void sendHeartbeat();
+      }
     }, PRESENCE_HEARTBEAT_INTERVAL_MS);
 
     const handleVisibilityChange = () => {
@@ -1252,10 +1547,24 @@ export const useMessengerController = () => {
 
   const setCurrentChat = useCallback(
     (chatId: string) => {
+      setDraftsByChat((prev) => {
+        const currentInput = textInputRef.current?.value ?? "";
+        if (!currentInput.trim()) {
+          const next = { ...prev };
+          delete next[currentChat];
+          return next;
+        }
+        return { ...prev, [currentChat]: currentInput };
+      });
+      setInput(draftsByChat[chatId] || "");
       setCurrentChatState(chatId);
-      resetComposer();
+      setEditingMessageId(null);
+      setReplyingToMessageId(null);
+      setShowEmojiPicker(false);
+      setPendingAttachments([]);
+      setUploadingAttachments([]);
     },
-    [resetComposer]
+    [currentChat, draftsByChat]
   );
 
   const openDisplayNameSettings = useCallback(() => {
@@ -1383,14 +1692,17 @@ export const useMessengerController = () => {
   }, [availableUsers]);
 
   const ensureActiveChatId = useCallback(async () => {
-    if (!currentChatSummary?.isVirtual || !currentChatSummary.directUserId) {
-      return currentChat;
+    const selectedChatId = currentChatRef.current || currentChat;
+    const selectedChatSummary = currentChatSummaryRef.current;
+
+    if (!selectedChatSummary?.isVirtual || !selectedChatSummary.directUserId) {
+      return selectedChatId;
     }
 
     const response = await fetchJson<{ chat: ChatSummary }>("/api/chats", {
       method: "POST",
       body: JSON.stringify({
-        memberIds: [currentChatSummary.directUserId],
+        memberIds: [selectedChatSummary.directUserId],
       }),
     });
 
@@ -1405,16 +1717,91 @@ export const useMessengerController = () => {
     setMessagesByChat((prev) => ({ ...prev, [nextChat.id]: prev[nextChat.id] || [] }));
     await refreshMessages(nextChat.id, currentUserId, { markAsRead: true });
     return nextChat.id;
-  }, [currentChat, currentChatSummary, currentUserId, refreshMessages]);
+  }, [currentChat, currentUserId, refreshMessages]);
 
-  const syncCreatedMessage = useCallback(
-    (chatId: string, serverMessage: ServerMessage) => {
-      const clientMessage = toClientMessage(serverMessage, currentUserId);
+  const appendOptimisticMessage = useCallback(
+    (chatId: string, text: string, attachments: Attachment[], replyToMessageId?: string | null) => {
+      const now = new Date();
+      const localId = `local-${createLocalId()}`;
+      const optimisticMessage: Message = {
+        id: localId,
+        text,
+        sender: "me",
+        authorId: currentUserId,
+        time: now.toLocaleTimeString("ru-RU", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        createdAt: now.toISOString(),
+        status: "sent",
+        replyToMessageId: replyToMessageId || null,
+        attachments,
+        reactions: [],
+      };
 
       setMessagesByChat((prev) => ({
         ...prev,
-        [chatId]: [...(prev[chatId] || []), clientMessage],
+        [chatId]: [...(prev[chatId] || []), optimisticMessage],
       }));
+
+      setChatSummaries((prev) =>
+        prev
+          .map((chat) =>
+            chat.id === chatId
+              ? {
+                  ...chat,
+                  updatedAt: optimisticMessage.createdAt || now.toISOString(),
+                  lastMessage: {
+                    id: localId,
+                    text: buildMessagePreviewText({ text, attachments }),
+                    createdAt: optimisticMessage.createdAt || now.toISOString(),
+                    authorName: currentUser?.name || "Денис",
+                  },
+                }
+              : chat
+          )
+          .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+      );
+
+      scrollActiveChatToBottom();
+      return localId;
+    },
+    [currentUser?.name, currentUserId, scrollActiveChatToBottom]
+  );
+
+  const removeOptimisticMessage = useCallback((chatId: string, localMessageId: string | null) => {
+    if (!localMessageId) {
+      return;
+    }
+
+    setMessagesByChat((prev) => ({
+      ...prev,
+      [chatId]: (prev[chatId] || []).filter((message) => message.id !== localMessageId),
+    }));
+  }, []);
+
+  const syncCreatedMessage = useCallback(
+    (chatId: string, serverMessage: ServerMessage, options?: { replaceMessageId?: string | null }) => {
+      const clientMessage = toClientMessage(serverMessage, currentUserId);
+
+      setMessagesByChat((prev) => {
+        const previousMessages = prev[chatId] || [];
+        const replaceMessageId = options?.replaceMessageId || "";
+        const existingIndex = previousMessages.findIndex(
+          (message) => message.id === replaceMessageId || message.id === serverMessage.id
+        );
+        const nextMessages =
+          existingIndex >= 0
+            ? previousMessages.map((message, index) => (index === existingIndex ? clientMessage : message))
+            : [...previousMessages, clientMessage];
+
+        return {
+          ...prev,
+          [chatId]: nextMessages.filter(
+            (message, index, messages) => messages.findIndex((item) => item.id === message.id) === index
+          ),
+        };
+      });
 
       setChatSummaries((prev) =>
         prev
@@ -1443,10 +1830,27 @@ export const useMessengerController = () => {
     [currentUser?.name, currentUserId]
   );
 
+  const revealSentMessage = useCallback(
+    (chatId: string) => {
+      if (!chatId) {
+        return;
+      }
+
+      if (currentChatRef.current !== chatId) {
+        currentChatRef.current = chatId;
+        setCurrentChatState(chatId);
+      }
+
+      scrollActiveChatToBottom();
+    },
+    [scrollActiveChatToBottom]
+  );
+
   const sendMessage = useCallback(async () => {
     const text = input.trim();
+    const selectedChatId = currentChatRef.current || currentChat;
 
-    if (!currentChat) {
+    if (!selectedChatId) {
       return;
     }
 
@@ -1457,7 +1861,7 @@ export const useMessengerController = () => {
 
       try {
         const response = await fetchJson<{ message: ServerMessage }>(
-          `/api/chats/${currentChat}/messages/${editingMessageId}`,
+          `/api/chats/${selectedChatId}/messages/${editingMessageId}`,
           {
             method: "PATCH",
             body: JSON.stringify({
@@ -1468,12 +1872,13 @@ export const useMessengerController = () => {
 
         setMessagesByChat((prev) => ({
           ...prev,
-          [currentChat]: (prev[currentChat] || []).map((message) =>
+          [selectedChatId]: (prev[selectedChatId] || []).map((message) =>
             message.id === editingMessageId ? toClientMessage(response.message, currentUserId) : message
           ),
         }));
 
         await refreshDirectoryState().catch(() => {});
+        revealSentMessage(response.message.chatId || selectedChatId);
         resetComposer();
       } catch (error) {
         showWarning(error instanceof Error ? error.message : "Не удалось изменить сообщение.");
@@ -1485,7 +1890,7 @@ export const useMessengerController = () => {
       return;
     }
 
-    let activeChatId = currentChat;
+    let activeChatId = selectedChatId;
 
     try {
       activeChatId = await ensureActiveChatId();
@@ -1521,6 +1926,14 @@ export const useMessengerController = () => {
       }
       files.forEach((file) => formData.append("files", file, file.name));
 
+      const optimisticMessageId = appendOptimisticMessage(
+        activeChatId,
+        text,
+        pendingAttachments,
+        replyingToMessageId
+      );
+      scrollActiveChatToBottom();
+
       try {
         setUploadingAttachments((prev) => prev.map((item) => ({ ...item, progress: 55 })));
         const response = await fetchJson<{ message: ServerMessage }>(`/api/chats/${activeChatId}/attachments`, {
@@ -1528,14 +1941,25 @@ export const useMessengerController = () => {
           body: formData,
         });
         setUploadingAttachments((prev) => prev.map((item) => ({ ...item, progress: 100 })));
-        syncCreatedMessage(activeChatId, response.message);
+        const confirmedChatId = response.message.chatId || activeChatId;
+        if (confirmedChatId !== activeChatId) {
+          removeOptimisticMessage(activeChatId, optimisticMessageId);
+        }
+        syncCreatedMessage(confirmedChatId, response.message, {
+          replaceMessageId: confirmedChatId === activeChatId ? optimisticMessageId : null,
+        });
+        revealSentMessage(confirmedChatId);
         resetComposer();
       } catch (error) {
         setUploadingAttachments([]);
+        removeOptimisticMessage(activeChatId, optimisticMessageId);
         showWarning(error instanceof Error ? error.message : "?? ??????? ????????? ?????.");
       }
       return;
     }
+
+    const optimisticMessageId = appendOptimisticMessage(activeChatId, text, [], replyingToMessageId);
+    scrollActiveChatToBottom();
 
     try {
       const response = await fetchJson<{ message: ServerMessage }>(`/api/chats/${activeChatId}/messages`, {
@@ -1546,32 +1970,280 @@ export const useMessengerController = () => {
         }),
       });
 
-      syncCreatedMessage(activeChatId, response.message);
+      const confirmedChatId = response.message.chatId || activeChatId;
+      if (confirmedChatId !== activeChatId) {
+        removeOptimisticMessage(activeChatId, optimisticMessageId);
+      }
+      syncCreatedMessage(confirmedChatId, response.message, {
+        replaceMessageId: confirmedChatId === activeChatId ? optimisticMessageId : null,
+      });
+      revealSentMessage(confirmedChatId);
       resetComposer();
     } catch (error) {
-      showWarning(error instanceof Error ? error.message : "?? ??????? ????????? ?????????.");
+      const errorMessage = error instanceof Error ? error.message : "Не удалось отправить сообщение.";
+      removeOptimisticMessage(activeChatId, optimisticMessageId);
+      setFailedSendDrafts((prev) => [
+        {
+          id: createLocalId(),
+          chatId: activeChatId,
+          text,
+          replyToMessageId: replyingToMessageId || null,
+          createdAt: new Date().toISOString(),
+          error: errorMessage,
+        },
+        ...prev.filter((draft) => !(draft.chatId === activeChatId && draft.text === text)),
+      ].slice(0, 12));
+      showWarning(`${errorMessage} Сообщение сохранено для повтора.`);
     }
   }, [
+    appendOptimisticMessage,
     currentChat,
     currentUserId,
     editingMessageId,
     ensureActiveChatId,
     input,
     pendingAttachments,
+    revealSentMessage,
     replyingToMessageId,
     refreshDirectoryState,
+    removeOptimisticMessage,
     resetComposer,
+    scrollActiveChatToBottom,
     showWarning,
     syncCreatedMessage,
   ]);
+
+  const retryFailedSend = useCallback(
+    async (draftId: string) => {
+      const draft = failedSendDrafts.find((item) => item.id === draftId);
+      if (!draft) {
+        return;
+      }
+
+      try {
+        const response = await fetchJson<{ message: ServerMessage }>(`/api/chats/${draft.chatId}/messages`, {
+          method: "POST",
+          body: JSON.stringify({
+            text: draft.text,
+            replyToMessageId: draft.replyToMessageId || null,
+          }),
+        });
+
+        syncCreatedMessage(draft.chatId, response.message);
+        setFailedSendDrafts((prev) => prev.filter((item) => item.id !== draftId));
+        revealSentMessage(response.message.chatId || draft.chatId);
+        setFeedback("Сообщение отправлено");
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Не удалось отправить сообщение.";
+        setFailedSendDrafts((prev) =>
+          prev.map((item) =>
+            item.id === draftId
+              ? {
+                  ...item,
+                  error: errorMessage,
+                }
+              : item
+          )
+        );
+        showWarning(errorMessage);
+      }
+    },
+    [failedSendDrafts, revealSentMessage, setFeedback, showWarning, syncCreatedMessage]
+  );
+
+  const discardFailedSend = useCallback((draftId: string) => {
+    setFailedSendDrafts((prev) => prev.filter((item) => item.id !== draftId));
+  }, []);
 
   const renameCurrentChat = useCallback(() => {
     setFeedback(NOT_AVAILABLE_MESSAGE);
   }, [setFeedback]);
 
-  const deleteChat = useCallback((_chatId: string) => {
-    setFeedback(NOT_AVAILABLE_MESSAGE);
-  }, [setFeedback]);
+  const setChatListFilter = useCallback((filter: ChatListFilter) => {
+    setChatListFilterState(filter);
+  }, []);
+
+  const patchChatPreferences = useCallback(
+    async (
+      chatId: string,
+      nextPreferences: Partial<Pick<ChatSummary, "isPinned" | "isArchived" | "isMuted">>,
+      failureMessage = "Не удалось сохранить настройки чата."
+    ) => {
+      if (!chatId || chatId.startsWith("virtual:")) {
+        return;
+      }
+
+      const previousChat = chatSummaries.find((chat) => chat.id === chatId);
+      if (!previousChat) {
+        return;
+      }
+
+      const normalizedPreferences =
+        nextPreferences.isArchived === true
+          ? { ...nextPreferences, isPinned: false }
+          : nextPreferences;
+
+      setChatSummaries((prev) =>
+        prev.map((chat) =>
+          chat.id === chatId
+            ? {
+                ...chat,
+                ...normalizedPreferences,
+              }
+            : chat
+        )
+      );
+
+      try {
+        const response = await fetchJson<{
+          preferences: Pick<ChatSummary, "id" | "isPinned" | "isArchived" | "isMuted"> & { chatId?: string };
+        }>(`/api/chats/${chatId}/preferences`, {
+          method: "PATCH",
+          body: JSON.stringify(normalizedPreferences),
+        });
+
+        setChatSummaries((prev) =>
+          prev.map((chat) =>
+            chat.id === chatId
+              ? {
+                  ...chat,
+                  isPinned: response.preferences.isPinned ?? false,
+                  isArchived: response.preferences.isArchived ?? false,
+                  isMuted: response.preferences.isMuted ?? false,
+                }
+              : chat
+          )
+        );
+      } catch (error) {
+        setChatSummaries((prev) => prev.map((chat) => (chat.id === chatId ? previousChat : chat)));
+        showWarning(error instanceof Error ? error.message : failureMessage);
+      }
+    },
+    [chatSummaries, showWarning]
+  );
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setGlobalSearchResults([]);
+      setGlobalSearchPending(false);
+      return;
+    }
+
+    const query = search.trim();
+    if (query.length < 2) {
+      setGlobalSearchResults([]);
+      setGlobalSearchPending(false);
+      return;
+    }
+
+    const abortController = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      setGlobalSearchPending(true);
+      void fetchJson<{ results: GlobalSearchResult[] }>(
+        `/api/search?q=${encodeURIComponent(query)}&limit=10`,
+        {
+          method: "GET",
+          signal: abortController.signal,
+        }
+      )
+        .then((response) => {
+          if (!abortController.signal.aborted) {
+            setGlobalSearchResults(Array.isArray(response.results) ? response.results : []);
+          }
+        })
+        .catch((error) => {
+          if (!abortController.signal.aborted && error instanceof Error && error.name !== "AbortError") {
+            setGlobalSearchResults([]);
+          }
+        })
+        .finally(() => {
+          if (!abortController.signal.aborted) {
+            setGlobalSearchPending(false);
+          }
+        });
+    }, 260);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      abortController.abort();
+    };
+  }, [isAuthenticated, search]);
+
+  const togglePinnedChat = useCallback((chatId: string) => {
+    if (!chatId || chatId.startsWith("virtual:")) {
+      return;
+    }
+
+    const chat = chatSummaries.find((item) => item.id === chatId);
+    if (!chat) {
+      return;
+    }
+
+    void patchChatPreferences(chatId, {
+      isPinned: !chat.isPinned,
+      isArchived: false,
+    });
+  }, [chatSummaries, patchChatPreferences]);
+
+  const toggleArchivedChat = useCallback(
+    (chatId: string) => {
+      if (!chatId || chatId.startsWith("virtual:")) {
+        return;
+      }
+
+      const chat = chatSummaries.find((item) => item.id === chatId);
+      if (!chat) {
+        return;
+      }
+
+      const willArchive = !chat.isArchived;
+      void patchChatPreferences(chatId, {
+        isArchived: willArchive,
+        ...(willArchive ? { isPinned: false } : {}),
+      });
+
+      if (willArchive && currentChat === chatId) {
+        const nextChat = visibleChatSummaries.find(
+          (item) => item.id !== chatId && !item.isVirtual && !item.isArchived
+        );
+        setCurrentChatState(nextChat?.id || "");
+      }
+
+      setFeedback(willArchive ? "Чат отправлен в архив" : "Чат возвращён из архива");
+    },
+    [chatSummaries, currentChat, patchChatPreferences, setFeedback, visibleChatSummaries]
+  );
+
+  const toggleMutedChat = useCallback(
+    (chatId: string) => {
+      if (!chatId || chatId.startsWith("virtual:")) {
+        return;
+      }
+
+      const chat = chatSummaries.find((item) => item.id === chatId);
+      if (!chat) {
+        return;
+      }
+
+      void patchChatPreferences(chatId, {
+        isMuted: !chat.isMuted,
+      });
+      setFeedback(chat.isMuted ? "Уведомления включены" : "Уведомления отключены");
+    },
+    [chatSummaries, patchChatPreferences, setFeedback]
+  );
+
+  const deleteChat = useCallback(
+    (chatId?: string) => {
+      if (!chatId) {
+        setFeedback("Выберите чат");
+        return;
+      }
+
+      toggleArchivedChat(chatId);
+    },
+    [setFeedback, toggleArchivedChat]
+  );
 
   const startEditingMessage = useCallback(
     (messageId: string) => {
@@ -1629,6 +2301,17 @@ export const useMessengerController = () => {
 
     highlightTimeoutRef.current = window.setTimeout(() => setHighlightedMessageId(null), 1800);
   }, []);
+
+  const openGlobalSearchResult = useCallback(
+    (result: GlobalSearchResult) => {
+      setCurrentChat(result.chatId);
+      setSearch("");
+      void refreshMessages(result.chatId, currentUserId, { markAsRead: true }).then(() => {
+        window.setTimeout(() => scrollToMessage(result.id), 80);
+      });
+    },
+    [currentUserId, refreshMessages, scrollToMessage, setCurrentChat]
+  );
 
   const copySingleMessage = useCallback(
     async (messageId: string) => {
@@ -1698,8 +2381,95 @@ export const useMessengerController = () => {
   }, [selectedMessages, setFeedback]);
 
   const forwardSelectedMessages = useCallback(() => {
-    setFeedback(NOT_AVAILABLE_MESSAGE);
-  }, [setFeedback]);
+    if (selectedMessages.length === 0) {
+      setFeedback("Выберите сообщения");
+      return;
+    }
+
+    setForwardingMessages(selectedMessages);
+    setIsSelectionMode(false);
+    setSelectedMessageIds([]);
+  }, [selectedMessages, setFeedback]);
+
+  const openForwardMessage = useCallback((messageId: string) => {
+    const message = currentChatMessages.find((m) => m.id === messageId) ?? null;
+    setForwardingMessages(message ? [message] : []);
+  }, [currentChatMessages]);
+
+  const closeForwardMessage = useCallback(() => {
+    setForwardingMessages([]);
+  }, []);
+
+  const executeForward = useCallback(async (targetChatId: string) => {
+    if (forwardingMessages.length === 0) return;
+
+    const forwardMessageIds = forwardingMessages.map((message) => message.id);
+
+    try {
+      const response = await fetchJson<{ message?: ServerMessage | null; messages?: ServerMessage[] }>(
+        "/api/chats/" + targetChatId + "/messages",
+        {
+          method: "POST",
+          body: JSON.stringify({ forwardMessageIds }),
+        }
+      );
+
+      const createdMessages = Array.isArray(response.messages)
+        ? response.messages
+        : response.message
+          ? [response.message]
+          : [];
+
+      for (const message of createdMessages) {
+        syncCreatedMessage(targetChatId, message);
+      }
+
+      await refreshDirectoryState().catch(() => {});
+      setForwardingMessages([]);
+      setFeedback(createdMessages.length > 1 ? "Сообщения пересланы" : "Сообщение переслано");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Не удалось переслать.");
+    }
+  }, [forwardingMessages, refreshDirectoryState, setFeedback, syncCreatedMessage]);
+
+  const forwardingMessage = forwardingMessages[0] || null;
+  const forwardingMessageCount = forwardingMessages.length;
+
+  const getForwardingPreviewText = useCallback(() => {
+    if (forwardingMessages.length === 0) {
+      return "";
+    }
+
+    if (forwardingMessages.length > 1) {
+      return `${forwardingMessages.length} сообщ.`;
+    }
+
+    return buildMessagePreviewText(forwardingMessages[0]);
+  }, [forwardingMessages]);
+
+  const hasForwardableMessages = useMemo(
+    () =>
+      forwardingMessages.some(
+        (message) => message.text.trim().length > 0 || (Array.isArray(message.attachments) && message.attachments.length > 0)
+      ),
+    [forwardingMessages]
+  );
+
+  useEffect(() => {
+    if (forwardingMessages.length > 0 && !hasForwardableMessages) {
+      setForwardingMessages([]);
+    }
+  }, [forwardingMessages.length, hasForwardableMessages]);
+
+  const canExecuteForward = forwardingMessages.length > 0 && hasForwardableMessages;
+
+  const executeForwardIfPossible = useCallback(async (targetChatId: string) => {
+    if (!canExecuteForward) {
+      return;
+    }
+
+    await executeForward(targetChatId);
+  }, [canExecuteForward, executeForward]);
 
   const deleteSelectedMessages = useCallback(() => {
     setFeedback(NOT_AVAILABLE_MESSAGE);
@@ -1755,8 +2525,58 @@ export const useMessengerController = () => {
     [currentChatMessages]
   );
 
+  const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!currentChat) return;
+    try {
+      const response = await fetchJson<{ reactions: Reaction[] }>(
+        "/api/chats/" + currentChat + "/messages/" + messageId + "/reactions",
+        { method: "POST", body: JSON.stringify({ emoji }) }
+      );
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [currentChat]: (prev[currentChat] || []).map((m) =>
+          m.id === messageId ? { ...m, reactions: response.reactions } : m
+        ),
+      }));
+    } catch {}
+  }, [currentChat]);
+
+  const toggleContextMenuReaction = useCallback(
+    async (emoji: string) => {
+      const messageId = contextMenu?.messageId;
+      if (!messageId) {
+        return;
+      }
+
+      await toggleReaction(messageId, emoji);
+      setContextMenu(null);
+    },
+    [contextMenu?.messageId, toggleReaction]
+  );
+
+  const pinMessage = useCallback(async (messageId: string, pin: boolean) => {
+    if (!currentChat) return;
+    try {
+      const response = await fetchJson<{ message: ServerMessage }>(
+        "/api/chats/" + currentChat + "/messages/" + messageId,
+        { method: "PATCH", body: JSON.stringify({ pin }) }
+      );
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [currentChat]: (prev[currentChat] || []).map((m) => {
+          if (pin) {
+            return m.id === messageId
+              ? toClientMessage(response.message, currentUserId)
+              : { ...m, isPinned: false };
+          }
+          return m.id === messageId ? { ...m, isPinned: false } : m;
+        }),
+      }));
+    } catch {}
+  }, [currentChat, currentUserId]);
+
   const handleContextMenuAction = useCallback(
-    async (action: "reply" | "copy" | "edit" | "delete" | "download" | "forward") => {
+    async (action: "reply" | "copy" | "edit" | "delete" | "download" | "forward" | "pin") => {
       if (!contextMenu) {
         return;
       }
@@ -1797,6 +2617,10 @@ export const useMessengerController = () => {
         }
       } else if (action === "download") {
         await downloadMessageAttachments(message.id);
+      } else if (action === "forward") {
+        openForwardMessage(message.id);
+      } else if (action === "pin") {
+        await pinMessage(message.id, !message.isPinned);
       } else {
         setFeedback(NOT_AVAILABLE_MESSAGE);
       }
@@ -1811,6 +2635,8 @@ export const useMessengerController = () => {
       currentUserId,
       downloadMessageAttachments,
       editingMessageId,
+      openForwardMessage,
+      pinMessage,
       refreshDirectoryState,
       refreshMessages,
       resetComposer,
@@ -1819,6 +2645,22 @@ export const useMessengerController = () => {
       startEditingMessage,
       startReplyToMessage,
     ]
+  );
+
+  const handleInputChange = useCallback(
+    (value: string) => {
+      setInput(value);
+      if (!value.trim() || !currentChat) return;
+      if (typingThrottleRef.current) return;
+      typingThrottleRef.current = window.setTimeout(() => {
+        typingThrottleRef.current = null;
+      }, 3000);
+      void fetchJson("/api/presence/typing", {
+        method: "POST",
+        body: JSON.stringify({ chatId: currentChat }),
+      }).catch(() => {});
+    },
+    [currentChat]
   );
 
   const insertEmoji = useCallback(
@@ -1902,6 +2744,41 @@ export const useMessengerController = () => {
     [prepareFiles]
   );
 
+  const chooseFiles = useCallback(async () => {
+    if (!hasTauriRuntime()) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const selectedFiles = await invoke<DesktopUploadFile[]>("pick_upload_files");
+
+      if (!Array.isArray(selectedFiles) || selectedFiles.length === 0) {
+        return;
+      }
+
+      const files = selectedFiles
+        .map((selectedFile) => {
+          const bytes = selectedFile.bytes;
+          const fileName = selectedFile.fileName || selectedFile.file_name || "attachment.bin";
+          const fileType = selectedFile.fileType || selectedFile.file_type || "application/octet-stream";
+
+          if (!Array.isArray(bytes)) {
+            return null;
+          }
+
+          return new File([new Uint8Array(bytes)], fileName, { type: fileType });
+        })
+        .filter((file): file is File => file instanceof File);
+
+      await prepareFiles(files);
+    } catch (error) {
+      console.warn("Desktop file picker failed, falling back to browser input.", error);
+      fileInputRef.current?.click();
+    }
+  }, [prepareFiles]);
+
   const handlePaste = useCallback(
     async (event: ClipboardEvent<HTMLTextAreaElement>) => {
       const files = Array.from(event.clipboardData.items)
@@ -1982,10 +2859,25 @@ export const useMessengerController = () => {
     chats,
     input,
     setInput,
+    handleInputChange,
+    typingUsers,
+    currentFailedSendDrafts,
     newChatName,
     setNewChatName,
     search,
     setSearch,
+    globalSearchResults,
+    globalSearchPending,
+    openGlobalSearchResult,
+    chatListFilter,
+    setChatListFilter,
+    chatFilterCounts,
+    pinnedChatIds,
+    archivedChatIds,
+    mutedChatIds,
+    togglePinnedChat,
+    toggleArchivedChat,
+    toggleMutedChat,
     copySuccess,
     editingMessageId,
     replyingToMessageId,
@@ -2023,6 +2915,12 @@ export const useMessengerController = () => {
     toggleSelectionMode,
     copySelectedMessages,
     forwardSelectedMessages,
+    forwardingMessage,
+    forwardingMessageCount,
+    forwardingPreviewText: getForwardingPreviewText(),
+    openForwardMessage,
+    closeForwardMessage,
+    executeForward: executeForwardIfPossible,
     deleteSelectedMessages,
     handleChatDragOver,
     handleChatDragLeave,
@@ -2033,16 +2931,26 @@ export const useMessengerController = () => {
     getQuotePreview: (message: Message | null) => getQuotePreview(message, users),
     removePendingAttachment,
     handleFileChange,
+    chooseFiles,
     insertEmoji,
     handlePaste,
     cancelEditing,
     sendMessage,
+    retryFailedSend,
+    discardFailedSend,
     startEditingMessage,
     startReplyToMessage,
     copySingleMessage,
     handleContextMenuAction,
     downloadMessageAttachments,
-    handleIncomingMessage: (_chatName: string, _authorId: string, _text: string) => {},
+    toggleContextMenuReaction,
+    toggleReaction,
+    pinMessage,
+    pinnedMessage,
+    loadMoreMessages,
+    hasMoreByChat,
+    isLoadingMore,
+    handleIncomingMessage: () => {},
   };
 };
 
