@@ -55,6 +55,27 @@ const getHrefForUrl = (url: string) => {
   return `https://${url}`;
 };
 
+const openMessageLink = async (href: string) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const hasTauriRuntime =
+    typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+
+  if (hasTauriRuntime) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("plugin:opener|open_url", { url: href });
+      return;
+    } catch {
+      // Fall back to browser behavior below.
+    }
+  }
+
+  window.open(href, "_blank", "noopener,noreferrer");
+};
+
 const renderTextWithMentions = (text: string, isMine: boolean, keyPrefix = "text") => {
   const parts = text.split(/(@\S+)/g);
   return parts.map((part, i) =>
@@ -91,7 +112,9 @@ const renderMessageText = (text: string, isMine: boolean) => {
         rel="noreferrer"
         className={`message-link ${isMine ? "message-link--mine" : "message-link--incoming"}`}
         onClick={(event) => {
+          event.preventDefault();
           event.stopPropagation();
+          void openMessageLink(href);
         }}
       >
         {linkText}

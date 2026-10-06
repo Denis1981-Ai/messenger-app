@@ -179,19 +179,20 @@ body {
   cursor: pointer;
   font-weight: 650;
   text-decoration-line: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
 .message-link:hover {
-  text-decoration-thickness: 2px;
+  filter: brightness(1.08);
+  text-decoration-thickness: 2.5px;
 }
 
 .message-link--mine {
   color: #ffffff;
-  text-decoration-color: rgba(255, 255, 255, 0.62);
+  text-decoration-color: rgba(255, 255, 255, 0.86);
 }
 
 .message-link--incoming {
