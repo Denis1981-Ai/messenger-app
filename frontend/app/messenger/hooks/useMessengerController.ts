@@ -525,16 +525,6 @@ export const useMessengerController = () => {
     const query = search.trim().toLowerCase();
     const compareByUpdatedAt = (left: ChatSummary, right: ChatSummary) =>
       new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-    const compareForList = (left: ChatSummary, right: ChatSummary) => {
-      const leftPinned = Boolean(left.isPinned);
-      const rightPinned = Boolean(right.isPinned);
-
-      if (leftPinned !== rightPinned) {
-        return leftPinned ? -1 : 1;
-      }
-
-      return compareByUpdatedAt(left, right);
-    };
 
     const visibleByFilter = visibleChatSummaries.filter((chat) => {
       const isArchived = Boolean(chat.isArchived);
@@ -584,7 +574,7 @@ export const useMessengerController = () => {
       return [...searched].sort(compareByUpdatedAt);
     }
 
-    return [...searched].sort(compareForList);
+    return [...searched].sort(compareByUpdatedAt);
   }, [chatListFilter, search, visibleChatSummaries]);
 
   const filteredChats = useMemo(() => filteredChatSummaries.map((chat) => chat.id), [filteredChatSummaries]);
