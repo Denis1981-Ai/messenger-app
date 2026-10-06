@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 
-import { ClipboardEvent, useEffect, useRef, useState } from "react";
+import { ClipboardEvent, ReactNode, useEffect, useRef, useState } from "react";
 
 import { isExecutableAttachment, isPreviewableImageAttachment } from "@/lib/attachment-mime";
 import { Message } from "../types";
@@ -32,18 +32,84 @@ type Props = {
 type AttachmentActionStatus = "idle" | "pending" | "success" | "error";
 
 const REACTION_EMOJIS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F62E}", "\u{1F622}"];
+const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<>()]+|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s<>()]*)?)/gi;
+const TRAILING_URL_PUNCTUATION = ".,!?:;)]}»”";
 
-const renderTextWithMentions = (text: string, isMine: boolean) => {
+const trimTrailingUrlPunctuation = (url: string) => {
+  let linkText = url;
+  let trailingText = "";
+
+  while (linkText.length > 0 && TRAILING_URL_PUNCTUATION.includes(linkText[linkText.length - 1])) {
+    trailingText = linkText[linkText.length - 1] + trailingText;
+    linkText = linkText.slice(0, -1);
+  }
+
+  return { linkText, trailingText };
+};
+
+const getHrefForUrl = (url: string) => {
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+
+  return `https://${url}`;
+};
+
+const renderTextWithMentions = (text: string, isMine: boolean, keyPrefix = "text") => {
   const parts = text.split(/(@\S+)/g);
   return parts.map((part, i) =>
     part.startsWith("@") ? (
-      <span key={i} className={isMine ? "font-semibold text-white/90" : "font-semibold text-[var(--accent-soft)]"}>
+      <span key={`${keyPrefix}-mention-${i}`} className={isMine ? "font-semibold text-white/90" : "font-semibold text-[var(--accent-soft)]"}>
         {part}
       </span>
     ) : (
-      part
+      <span key={`${keyPrefix}-part-${i}`}>{part}</span>
     )
   );
+};
+
+const renderMessageText = (text: string, isMine: boolean) => {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(URL_PATTERN)) {
+    const rawMatch = match[0];
+    const matchIndex = match.index ?? 0;
+
+    if (matchIndex > lastIndex) {
+      nodes.push(...renderTextWithMentions(text.slice(lastIndex, matchIndex), isMine, `before-link-${matchIndex}`));
+    }
+
+    const { linkText, trailingText } = trimTrailingUrlPunctuation(rawMatch);
+    const href = getHrefForUrl(linkText);
+
+    nodes.push(
+      <a
+        key={`link-${matchIndex}`}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className={`message-link ${isMine ? "message-link--mine" : "message-link--incoming"}`}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        {linkText}
+      </a>
+    );
+
+    if (trailingText) {
+      nodes.push(<span key={`link-trailing-${matchIndex}`}>{trailingText}</span>);
+    }
+
+    lastIndex = matchIndex + rawMatch.length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(...renderTextWithMentions(text.slice(lastIndex), isMine, `after-link-${lastIndex}`));
+  }
+
+  return nodes;
 };
 
 const dataUrlToBlob = async (dataUrl: string) => {
@@ -426,7 +492,7 @@ export function MessageItem({
                   Комментарий к файлу
                 </div>
               )}
-              {renderTextWithMentions(message.text, isMine)}
+              {renderMessageText(message.text, isMine)}
             </div>
           )}
 

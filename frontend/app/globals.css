@@ -175,6 +175,35 @@ body {
   word-break: normal;
 }
 
+.message-link {
+  cursor: pointer;
+  font-weight: 650;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.message-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.message-link--mine {
+  color: #ffffff;
+  text-decoration-color: rgba(255, 255, 255, 0.62);
+}
+
+.message-link--incoming {
+  color: var(--accent-soft);
+  text-decoration-color: rgba(191, 219, 254, 0.52);
+}
+
+[data-theme="light"] .message-link--incoming {
+  color: var(--accent-strong);
+  text-decoration-color: rgba(29, 78, 216, 0.42);
+}
+
 @keyframes msg-in {
   from {
     opacity: 0;
